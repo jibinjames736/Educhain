@@ -1,0 +1,65 @@
+.signup-page {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #0f172a, #020617);
+  color: white;
+}
+
+.signup-card {
+  width: 420px;
+  padding: 30px;
+  background-color: #020617;
+  border-radius: 10px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.6);
+  text-align: center;
+}
+
+.signup-card h2 {
+  margin-bottom: 20px;
+}
+
+.role-toggle {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.role-toggle button {
+  width: 48%;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #22c55e;
+  background: transparent;
+  color: #22c55e;
+  cursor: pointer;
+}
+
+.role-toggle .active {
+  background-color: #22c55e;
+  color: #022c22;
+  font-weight: bold;
+}
+
+.signup-card input {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+  border: none;
+  background-color: #0f172a;
+  color: white;
+}
+
+.primary-btn {
+  width: 100%;
+  padding: 12px;
+  border-radius: 6px;
+  border: none;
+  background-color: #22c55e;
+  color: #022c22;
+  font-weight: bold;
+  cursor: pointer;
+  margin-bottom: 10px;
+}

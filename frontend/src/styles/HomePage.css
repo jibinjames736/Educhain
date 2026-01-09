@@ -1,0 +1,134 @@
+.page {
+  min-height: 100vh;
+  background: #050b16;
+  color: #ffffff;
+  font-family: Inter, Arial, sans-serif;
+}
+
+/* NAVBAR */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  padding: 22px 48px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.brand {
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.top-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.connect-btn {
+  padding: 8px 18px;
+  border: 1px solid #38bdf8;
+  background: transparent;
+  color: #38bdf8;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.signup-btn {
+  padding: 8px 18px;
+  border: 1px solid #fff;
+  background: transparent;
+  color: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* HERO */
+.hero {
+  text-align: center;
+  padding: 90px 20px 60px;
+}
+
+.hero h1 {
+  font-size: 2.8rem;
+  font-weight: 600;
+  line-height: 1.25;
+  margin-bottom: 18px;
+}
+
+.hero p {
+  max-width: 620px;
+  margin: 0 auto;
+  opacity: 0.8;
+}
+
+.verify-row {
+  margin-top: 32px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+}
+
+.verify-btn {
+  padding: 12px 26px;
+  background: #3b82f6;
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.upload-icon {
+  font-size: 1.2rem;
+  opacity: 0.7;
+}
+
+.hint {
+  margin-top: 12px;
+  font-size: 0.85rem;
+  opacity: 0.6;
+}
+
+/* FEATURES */
+.features {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+  padding: 70px 60px;
+}
+
+.feature-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 16px;
+  padding: 30px 26px;
+  text-align: center;
+}
+
+.icon {
+  font-size: 1.6rem;
+  margin-bottom: 12px;
+}
+
+.feature-card h3 {
+  margin-bottom: 10px;
+}
+
+.feature-card p {
+  font-size: 0.9rem;
+  opacity: 0.75;
+}
+
+/* FOOTER */
+.footer {
+  padding-bottom: 40px;
+  text-align: center;
+  opacity: 0.7;
+}
+
+.chains {
+  margin-top: 10px;
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+}
