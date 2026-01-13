@@ -7,41 +7,78 @@ import { db } from "../firebase";
 const HomePage = () => {
   const navigate = useNavigate();
   const [wallet, setWallet] = useState("");
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
 
+  // ✅ CONNECT / RECONNECT WALLET
   const connectWalletAndRoute = async () => {
     if (!window.ethereum) {
       alert("Please install MetaMask");
       return;
     }
 
-    const accounts = await window.ethereum.request({
-      method: "eth_requestAccounts",
-    });
+    try {
+      // Always triggers MetaMask popup
+      const accounts = await window.ethereum.request({
+        method: "eth_requestAccounts",
+      });
 
-    const walletAddress = accounts[0];
-    setWallet(walletAddress);
-    localStorage.setItem("wallet", walletAddress);
+      const walletAddress = accounts[0];
 
-    const snap = await getDoc(doc(db, "users", walletAddress));
+      // Reset app session before reconnect
+      localStorage.removeItem("userData");
+      localStorage.setItem("wallet", walletAddress);
+      setWallet(walletAddress);
 
-    if (!snap.exists()) {
-      navigate("/signup");
-      return;
+      // Fetch user from Firestore
+      const snap = await getDoc(doc(db, "users", walletAddress));
+
+      if (!snap.exists()) {
+        navigate("/signup");
+        return;
+      }
+
+      const userData = snap.data();
+      localStorage.setItem("userData", JSON.stringify(userData));
+
+      // Role-based routing
+      if (userData.role === "STUDENT") navigate("/studentdashboard");
+      if (userData.role === "UNIVERSITY") navigate("/universitydashboard");
+    } catch (err) {
+      console.error(err);
+      alert("Wallet connection cancelled");
     }
-
-    const userData = snap.data();
-    localStorage.setItem("userData", JSON.stringify(userData));
-
-    if (userData.role === "STUDENT") navigate("/studentdashboard");
-    if (userData.role === "UNIVERSITY") navigate("/universitydashboard");
   };
 
+  // ✅ Restore wallet ONLY if app session exists
   useEffect(() => {
-    if (window.ethereum) {
-      window.ethereum.request({ method: "eth_accounts" }).then((acc) => {
-        if (acc.length) setWallet(acc[0]);
-      });
+    const savedWallet = localStorage.getItem("wallet");
+    const userData = localStorage.getItem("userData");
+
+    if (savedWallet && userData) {
+      setWallet(savedWallet);
     }
+  }, []);
+
+  // ✅ Detect MetaMask account change (CRITICAL)
+  useEffect(() => {
+    if (!window.ethereum) return;
+
+    const handleAccountsChanged = () => {
+      // Clear app session
+      localStorage.clear();
+      setWallet("");
+
+      alert("Wallet account changed. Please reconnect.");
+    };
+
+    window.ethereum.on("accountsChanged", handleAccountsChanged);
+
+    return () => {
+      window.ethereum.removeListener(
+        "accountsChanged",
+        handleAccountsChanged
+      );
+    };
   }, []);
 
   return (
@@ -74,18 +111,17 @@ const HomePage = () => {
         </p>
 
         <div className="verify-row">
-          <button className="verify-btn" onClick={() => navigate("/verify")}>
+          <button
+            className="verify-btn"
+            onClick={() => setShowVerifyModal(true)}
+          >
             Verify Certificate
           </button>
           <span className="upload-icon">↑</span>
         </div>
-
-        <p className="hint">
-          Drag & Drop or Upload your certificate file
-        </p>
       </section>
 
-      {/* FEATURES */}
+      {/* ✅ FEATURES — UNCHANGED */}
       <section className="features">
         <div className="feature-card">
           <div className="icon">🔍</div>
@@ -120,10 +156,41 @@ const HomePage = () => {
         <p>Supported Blockchains:</p>
         <div className="chains">
           <span>Ethereum</span>
-          <span>Polygon</span>
-          <span>Solana</span>
         </div>
       </footer>
+
+      {/* VERIFY MODAL */}
+      {showVerifyModal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <h2>Verify Certificate</h2>
+            <p>Select a verification method</p>
+
+            <div className="modal-actions">
+              <button
+                className="modal-btn primary"
+                onClick={() => navigate("/verify?mode=upload")}
+              >
+                Upload Certificate File
+              </button>
+
+              <button
+                className="modal-btn secondary"
+                onClick={() => navigate("/verify?mode=qr")}
+              >
+                Scan QR Code
+              </button>
+            </div>
+
+            <button
+              className="modal-close"
+              onClick={() => setShowVerifyModal(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

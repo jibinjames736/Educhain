@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import "../styles/Studentdashboard.css";
 
+// sample certificates (later from blockchain)
 const sampleCertificates = [
   {
     certName: "B.Sc Graduation",
@@ -31,25 +32,29 @@ const sampleCertificates = [
   },
 ];
 
-// sample logged-in student (normally from Firebase)
-const studentProfile = {
-  name: "John Doe",
-  university: "Stanford University",
-  role: "Student",
-};
-
 const Studentdashboard = () => {
   const [activeTab, setActiveTab] = useState("MY_CERTIFICATES");
   const [search, setSearch] = useState("");
+  const [studentProfile, setStudentProfile] = useState(null);
 
-  const initials = studentProfile.name
-    .split(" ")
-    .map((n) => n[0])
-    .join("");
+  // ✅ Load student data from localStorage (wallet-based)
+  useEffect(() => {
+    const storedUser = localStorage.getItem("userData");
+    if (storedUser) {
+      setStudentProfile(JSON.parse(storedUser));
+    }
+  }, []);
 
   const filteredCertificates = sampleCertificates.filter((c) =>
     c.certName.toLowerCase().includes(search.toLowerCase())
   );
+
+  // initials for avatar
+  const initials =
+    studentProfile?.name
+      ?.split(" ")
+      .map((n) => n[0])
+      .join("") || "U";
 
   return (
     <div className="dashboard">
@@ -68,20 +73,21 @@ const Studentdashboard = () => {
               alignItems: "center",
               justifyContent: "center",
               fontWeight: "700",
-              fontSize: "1rem",
               marginBottom: "10px",
             }}
           >
             {initials}
           </div>
 
-          <div style={{ fontWeight: "600" }}>{studentProfile.name}</div>
+          <div style={{ fontWeight: "600" }}>
+            {studentProfile?.name || "Student"}
+          </div>
           <div style={{ fontSize: "0.75rem", opacity: 0.7 }}>
-            {studentProfile.role} • {studentProfile.university}
+            Student • {studentProfile?.universityName}
           </div>
         </div>
 
-        {/* NAVIGATION */}
+        {/* NAV */}
         <nav>
           <button
             className={activeTab === "MY_CERTIFICATES" ? "active" : ""}
@@ -107,11 +113,20 @@ const Studentdashboard = () => {
           </button>
         </nav>
 
-        <button className="logout-btn">Log Out</button>
+        <button
+          className="logout-btn"
+          onClick={() => {
+            localStorage.clear();
+            window.location.href = "/";
+          }}
+        >
+          Log Out
+        </button>
       </aside>
 
       {/* MAIN CONTENT */}
       <main className="content">
+        {/* MY CERTIFICATES */}
         {activeTab === "MY_CERTIFICATES" && (
           <>
             <input
@@ -167,7 +182,19 @@ const Studentdashboard = () => {
           </>
         )}
 
-        {activeTab !== "MY_CERTIFICATES" && (
+        {/* PROFILE TAB */}
+        {activeTab === "PROFILE" && studentProfile && (
+          <div className="placeholder">
+            <h2>Profile</h2>
+            <p><strong>Name:</strong> {studentProfile.name}</p>
+            <p><strong>Student ID:</strong> {studentProfile.studentId}</p>
+            <p><strong>Email:</strong> {studentProfile.email || "—"}</p>
+            <p><strong>Wallet:</strong> {studentProfile.wallet}</p>
+          </div>
+        )}
+
+        {/* OTHER TABS */}
+        {activeTab !== "MY_CERTIFICATES" && activeTab !== "PROFILE" && (
           <div className="placeholder">
             <h2>{activeTab.replace("_", " ")}</h2>
             <p>Content will appear here.</p>
