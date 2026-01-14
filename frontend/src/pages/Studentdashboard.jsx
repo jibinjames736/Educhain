@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import "../styles/Studentdashboard.css";
 
-// sample certificates (later from blockchain)
+// sample certificates
 const sampleCertificates = [
   {
     certName: "B.Sc Graduation",
@@ -33,34 +34,75 @@ const sampleCertificates = [
 ];
 
 const Studentdashboard = () => {
+  const navigate = useNavigate();
+
   const [activeTab, setActiveTab] = useState("MY_CERTIFICATES");
   const [search, setSearch] = useState("");
   const [studentProfile, setStudentProfile] = useState(null);
 
-  // ✅ Load student data from localStorage (wallet-based)
+  // Session check
   useEffect(() => {
     const storedUser = localStorage.getItem("userData");
-    if (storedUser) {
-      setStudentProfile(JSON.parse(storedUser));
-    }
-  }, []);
+    const wallet = localStorage.getItem("wallet");
 
+    if (!storedUser || !wallet) {
+      navigate("/", { replace: true });
+      return;
+    }
+
+    setStudentProfile(JSON.parse(storedUser));
+  }, [navigate]);
+
+  // Handle account switching
+  useEffect(() => {
+    if (!window.ethereum) return;
+
+    const handleAccountsChanged = (accounts) => {
+      if (accounts.length === 0 || accounts[0] !== localStorage.getItem("wallet")) {
+        localStorage.clear();
+        navigate("/", { replace: true });
+      }
+    };
+
+    window.ethereum.on("accountsChanged", handleAccountsChanged);
+
+    return () => {
+      window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
+    };
+  }, [navigate]);
+
+  // Filter certificates
   const filteredCertificates = sampleCertificates.filter((c) =>
     c.certName.toLowerCase().includes(search.toLowerCase())
   );
 
-  // initials for avatar
+  // Avatar initials
   const initials =
     studentProfile?.name
       ?.split(" ")
       .map((n) => n[0])
       .join("") || "U";
 
+  // ✅ WORKING LOGOUT
+  const handleLogout = () => {
+    // Clear app data
+    localStorage.removeItem("userData");
+    localStorage.removeItem("wallet");
+    
+    // Navigate home
+    navigate("/", { replace: true });
+    
+    // Small reload to reset state
+    setTimeout(() => {
+      window.location.reload();
+    }, 50);
+  };
+
   return (
     <div className="dashboard">
       {/* SIDEBAR */}
       <aside className="sidebar">
-        {/* PROFILE HEADER */}
+        {/* PROFILE */}
         <div style={{ marginBottom: "28px" }}>
           <div
             style={{
@@ -87,7 +129,7 @@ const Studentdashboard = () => {
           </div>
         </div>
 
-        {/* NAV */}
+        {/* NAVIGATION */}
         <nav>
           <button
             className={activeTab === "MY_CERTIFICATES" ? "active" : ""}
@@ -113,13 +155,7 @@ const Studentdashboard = () => {
           </button>
         </nav>
 
-        <button
-          className="logout-btn"
-          onClick={() => {
-            localStorage.clear();
-            window.location.href = "/";
-          }}
-        >
+        <button className="logout-btn" onClick={handleLogout}>
           Log Out
         </button>
       </aside>
@@ -182,7 +218,7 @@ const Studentdashboard = () => {
           </>
         )}
 
-        {/* PROFILE TAB */}
+        {/* PROFILE */}
         {activeTab === "PROFILE" && studentProfile && (
           <div className="placeholder">
             <h2>Profile</h2>

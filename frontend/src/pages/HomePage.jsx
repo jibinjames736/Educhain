@@ -8,28 +8,43 @@ const HomePage = () => {
   const navigate = useNavigate();
   const [wallet, setWallet] = useState("");
   const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
 
-  // ✅ CONNECT / RECONNECT WALLET
+  // ✅ WORKING: Force MetaMask to show popup EVERY TIME
   const connectWalletAndRoute = async () => {
     if (!window.ethereum) {
       alert("Please install MetaMask");
       return;
     }
 
+    if (isConnecting) return;
+    setIsConnecting(true);
+
     try {
-      // Always triggers MetaMask popup
+      // Clear our app data
+      localStorage.removeItem("userData");
+      
+      // ✅ TRICK: Request permissions first to force popup
+      try {
+        await window.ethereum.request({
+          method: "wallet_requestPermissions",
+          params: [{ eth_accounts: {} }],
+        });
+      } catch (permError) {
+        // User cancelled permissions - that's okay
+        console.log("Permission request cancelled or not supported");
+      }
+      
+      // Now request accounts - THIS SHOULD SHOW POPUP
       const accounts = await window.ethereum.request({
         method: "eth_requestAccounts",
       });
 
       const walletAddress = accounts[0];
-
-      // Reset app session before reconnect
-      localStorage.removeItem("userData");
+      
       localStorage.setItem("wallet", walletAddress);
       setWallet(walletAddress);
 
-      // Fetch user from Firestore
       const snap = await getDoc(doc(db, "users", walletAddress));
 
       if (!snap.exists()) {
@@ -40,16 +55,22 @@ const HomePage = () => {
       const userData = snap.data();
       localStorage.setItem("userData", JSON.stringify(userData));
 
-      // Role-based routing
       if (userData.role === "STUDENT") navigate("/studentdashboard");
       if (userData.role === "UNIVERSITY") navigate("/universitydashboard");
+      
     } catch (err) {
       console.error(err);
-      alert("Wallet connection cancelled");
+      if (err.code === 4001) {
+        alert("Wallet connection cancelled");
+      } else {
+        alert("Failed to connect wallet");
+      }
+    } finally {
+      setIsConnecting(false);
     }
   };
 
-  // ✅ Restore wallet ONLY if app session exists
+  // ✅ Restore wallet if exists
   useEffect(() => {
     const savedWallet = localStorage.getItem("wallet");
     const userData = localStorage.getItem("userData");
@@ -59,27 +80,55 @@ const HomePage = () => {
     }
   }, []);
 
-  // ✅ Detect MetaMask account change (CRITICAL)
+  // ✅ Handle account switching
   useEffect(() => {
     if (!window.ethereum) return;
 
-    const handleAccountsChanged = () => {
-      // Clear app session
-      localStorage.clear();
-      setWallet("");
-
-      alert("Wallet account changed. Please reconnect.");
+    const handleAccountsChanged = async (accounts) => {
+      if (accounts.length === 0) {
+        localStorage.removeItem("userData");
+        localStorage.removeItem("wallet");
+        setWallet("");
+        window.location.href = "/";
+      } else {
+        const newAddress = accounts[0];
+        const currentWallet = localStorage.getItem("wallet");
+        
+        if (newAddress !== currentWallet) {
+          localStorage.removeItem("userData");
+          localStorage.setItem("wallet", newAddress);
+          setWallet(newAddress);
+          
+          try {
+            const snap = await getDoc(doc(db, "users", newAddress));
+            if (snap.exists()) {
+              const userData = snap.data();
+              localStorage.setItem("userData", JSON.stringify(userData));
+              
+              if (userData.role === "STUDENT") navigate("/studentdashboard");
+              if (userData.role === "UNIVERSITY") navigate("/universitydashboard");
+            } else {
+              navigate("/signup");
+            }
+          } catch (error) {
+            console.error("Error:", error);
+          }
+        }
+      }
     };
 
     window.ethereum.on("accountsChanged", handleAccountsChanged);
 
     return () => {
-      window.ethereum.removeListener(
-        "accountsChanged",
-        handleAccountsChanged
-      );
+      window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
     };
-  }, []);
+  }, [navigate]);
+
+  // Format wallet for display
+  const formatWalletAddress = (address) => {
+    if (!address) return "";
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
 
   return (
     <div className="page">
@@ -87,10 +136,13 @@ const HomePage = () => {
       <header className="topbar">
         <div className="brand">CertVerify</div>
         <div className="top-actions">
-          <button className="connect-btn" onClick={connectWalletAndRoute}>
-            {wallet
-              ? `${wallet.slice(0, 6)}...${wallet.slice(-4)}`
-              : "Connect Wallet"}
+          <button 
+            className="connect-btn" 
+            onClick={connectWalletAndRoute}
+            disabled={isConnecting}
+          >
+            {isConnecting ? "Connecting..." : 
+              wallet ? formatWalletAddress(wallet) : "Connect Wallet"}
           </button>
           <button className="signup-btn" onClick={() => navigate("/signup")}>
             Sign Up
@@ -121,7 +173,7 @@ const HomePage = () => {
         </div>
       </section>
 
-      {/* ✅ FEATURES — UNCHANGED */}
+      {/* FEATURES */}
       <section className="features">
         <div className="feature-card">
           <div className="icon">🔍</div>
