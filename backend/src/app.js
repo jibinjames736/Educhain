@@ -4,14 +4,14 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const crypto = require('crypto');
 
-const pdf = require('./pdf');
 const cryptoLib = require('./crypto');
 const ipfs = require('./ipfs');
-// blockchain.js is no longer used here
 
 const app = express();
 app.use(cors());
-app.use(bodyParser.json({ limit: '10mb' }));
+
+// Increase JSON payload limit to 50MB (adjust if needed)
+app.use(bodyParser.json({ limit: '50mb' }));
 
 // Temporary storage for PDFs waiting for signature
 const tempStore = new Map();
@@ -24,14 +24,26 @@ setInterval(() => {
   }
 }, 60000);
 
-// ---------- Step 1: Prepare (generate PDF, return hash) ----------
+// ---------- Step 1: Prepare (accept PDF from frontend, return hash) ----------
 app.post('/api/prepare', async (req, res) => {
   try {
-    const formData = req.body; // { studentName, course, certId, ... }
-    const pdfBuffer = await pdf.generatePDF(formData);
+    const formData = req.body; // { studentName, course, certId, studentId, universityName, pdfBase64 }
+    const pdfBase64 = formData.pdfBase64;
+    if (!pdfBase64) {
+      return res.status(400).json({ error: 'Missing pdfBase64 in request body' });
+    }
+
+    // Convert base64 to buffer
+    const pdfBuffer = Buffer.from(pdfBase64, 'base64');
+
+    // Compute hash of the PDF
     const hash = cryptoLib.computeHash(pdfBuffer);
+
+    // Generate a temporary ID and store the PDF buffer along with form data
     const tempId = crypto.randomBytes(16).toString('hex');
     tempStore.set(tempId, { pdfBuffer, formData, createdAt: Date.now() });
+
+    // Return the hash (as 0x-prefixed hex) and tempId
     res.json({ pdfHash: '0x' + hash.toString('hex'), tempId });
   } catch (error) {
     console.error('Prepare error:', error);
@@ -45,35 +57,37 @@ app.post('/api/finalize', async (req, res) => {
     const { tempId, signature, issuer } = req.body;
 
     const temp = tempStore.get(tempId);
-    if (!temp) return res.status(404).json({ error: 'Temporary data expired or not found' });
+    if (!temp) {
+      return res.status(404).json({ error: 'Temporary data expired or not found' });
+    }
     tempStore.delete(tempId);
 
     const { pdfBuffer, formData } = temp;
     const pdfHash = cryptoLib.computeHash(pdfBuffer);
 
-    // Verify signature
+    // Verify signature matches the issuer
     const recovered = cryptoLib.recoverSigner(pdfHash, signature);
     if (recovered.toLowerCase() !== issuer.toLowerCase()) {
       return res.status(400).json({ error: 'Signature does not match issuer' });
     }
 
-    // Encrypt PDF
+    // Encrypt the PDF (AES-256-CBC)
     const { key, iv, encryptedData } = cryptoLib.encryptPDF(pdfBuffer);
 
-    // Upload to IPFS
+    // Upload encrypted PDF to IPFS
     const cid = await ipfs.upload(encryptedData);
 
-    // Combine key and IV for easy transport
+    // Combine key and IV for easy transport (base64)
     const keyWithIv = Buffer.concat([key, iv]).toString('base64');
 
-    // Build verification URL
-    const verificationUrl = `https://verify.example.com?cid=${cid}&key=${encodeURIComponent(keyWithIv)}`;
+    // Build verification URL (customize as needed)
+    const verificationUrl = `https://certverify.app/verify/${formData.certId}`;
 
-    // Return everything the frontend needs to send the blockchain transaction
+    // Return all data needed by the frontend for blockchain transaction and Firestore
     res.json({
       cid,
       pdfHashHex: '0x' + pdfHash.toString('hex'),
-      signature,           // already 0x-prefixed
+      signature,           // already 0x-prefixed from frontend
       issuer,
       certId: formData.certId,
       encryptedPdfBase64: encryptedData.toString('base64'),

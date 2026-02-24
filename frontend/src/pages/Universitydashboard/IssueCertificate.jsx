@@ -3,14 +3,17 @@ import "../../styles/IssueCertificate.css";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { QRCodeCanvas } from "qrcode.react";
-import { BrowserProvider, Contract } from "ethers"; // ethers v6
+import { BrowserProvider, Contract } from "ethers";
 import contractABI from "/src/contractABI.json";
+import { db } from "../../firebase";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 
 const IssueCertificate = ({ university }) => {
   const [form, setForm] = useState({
     studentName: "",
     course: "",
     certId: "",
+    studentId: "",
   });
 
   const [issued, setIssued] = useState(false);
@@ -18,16 +21,39 @@ const IssueCertificate = ({ university }) => {
   const [txHash, setTxHash] = useState(null);
   const [verificationUrl, setVerificationUrl] = useState(null);
   const [aesKey, setAesKey] = useState(null);
-  const [ipfsCid, setIpfsCid] = useState(null); // <-- NEW STATE
+  const [ipfsCid, setIpfsCid] = useState(null);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
+  // Generate PDF as base64 string (optimized for size)
+  const generatePDFBase64 = async () => {
+    const element = document.getElementById("certificate");
+    await new Promise(resolve => setTimeout(resolve, 300));
+    // Use scale 2 (instead of 4) and JPEG compression
+    const canvas = await html2canvas(element, { 
+      scale: 2, 
+      useCORS: true 
+    });
+    const imgData = canvas.toDataURL("image/jpeg", 0.8); // JPEG with 80% quality
+    const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: "a4" });
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+    pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
+    const pdfBlob = pdf.output("blob");
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result.split(",")[1]); // base64 without header
+      reader.onerror = reject;
+      reader.readAsDataURL(pdfBlob);
+    });
+  };
+
   // ========== MAIN ISSUE FUNCTION ==========
   const issueCertificate = async () => {
-    if (!form.studentName || !form.course || !form.certId) {
-      alert("Fill all fields before issuing certificate");
+    if (!form.studentName || !form.course || !form.certId || !form.studentId) {
+      alert("Please fill all fields including Student ID");
       return;
     }
 
@@ -36,31 +62,37 @@ const IssueCertificate = ({ university }) => {
     setTxHash(null);
     setVerificationUrl(null);
     setAesKey(null);
-    setIpfsCid(null); // reset
+    setIpfsCid(null);
 
     try {
       const backendUrl = import.meta.env.VITE_BACKEND_URL;
       const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS;
 
-      // ---- STEP 1: PREPARE ----
+      // ---- STEP 1: Generate PDF on frontend ----
+      const pdfBase64 = await generatePDFBase64();
+
+      // ---- STEP 2: PREPARE (send PDF and form data to backend) ----
       const prepareRes = await fetch(`${backendUrl}/api/prepare`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          universityName: university?.universityName || "CertVerify University",
+          pdfBase64,
+        }),
       });
       if (!prepareRes.ok) throw new Error(`Prepare failed (${prepareRes.status})`);
       const { pdfHash, tempId } = await prepareRes.json();
 
-      // ---- STEP 2: CONNECT TO METAMASK AND ENSURE CORRECT NETWORK ----
+      // ---- STEP 3: CONNECT TO METAMASK AND ENSURE CORRECT NETWORK ----
       if (!window.ethereum) throw new Error("MetaMask not installed");
       const provider = new BrowserProvider(window.ethereum);
       await provider.send("eth_requestAccounts", []);
       let signer = await provider.getSigner();
 
-      // ---- NETWORK CHECK (Arbitrum Sepolia = chainId 421614) ----
+      // Network check (Arbitrum Sepolia) – same as before
       const network = await signer.provider.getNetwork();
       const targetChainId = 421614n;
-
       if (network.chainId !== targetChainId) {
         try {
           await window.ethereum.request({
@@ -93,7 +125,7 @@ const IssueCertificate = ({ university }) => {
       const signature = await signer.signMessage(pdfHash);
       console.log("Hash signed by", issuer);
 
-      // ---- STEP 3: FINALIZE (backend encrypts, uploads to IPFS) ----
+      // ---- STEP 4: FINALIZE (backend encrypts, uploads to IPFS) ----
       const finalizeRes = await fetch(`${backendUrl}/api/finalize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -101,12 +133,10 @@ const IssueCertificate = ({ university }) => {
       });
       if (!finalizeRes.ok) throw new Error(`Finalize failed (${finalizeRes.status})`);
       const finalData = await finalizeRes.json();
-      // finalData contains: cid, pdfHashHex, signature, issuer, certId, encryptedPdfBase64, aesKeyWithIv, verificationUrl
 
-      // Save IPFS CID
       setIpfsCid(finalData.cid);
 
-      // ---- STEP 4: DOWNLOAD ENCRYPTED PDF ----
+      // ---- STEP 5: DOWNLOAD ENCRYPTED PDF (optional) ----
       const pdfBytes = Uint8Array.from(atob(finalData.encryptedPdfBase64), c => c.charCodeAt(0));
       const blob = new Blob([pdfBytes], { type: "application/pdf" });
       const url = window.URL.createObjectURL(blob);
@@ -116,23 +146,70 @@ const IssueCertificate = ({ university }) => {
       link.click();
       window.URL.revokeObjectURL(url);
 
-      // ---- STEP 5: SUBMIT TO BLOCKCHAIN (using the same signer) ----
+      // ---- STEP 6: SUBMIT TO BLOCKCHAIN WITH GAS RETRY ----
       const contract = new Contract(contractAddress, contractABI, signer);
-      const tx = await contract.issueCertificate(
-        finalData.certId,
-        finalData.cid,
-        finalData.pdfHashHex,
-        finalData.signature,
-        finalData.issuer
-      );
-      const receipt = await tx.wait();
+      let tx;
+      let receipt;
+      let retries = 0;
+      const maxRetries = 3;
 
-      // ---- STEP 6: UPDATE UI ----
+      while (retries < maxRetries) {
+        try {
+          const feeData = await signer.provider.getFeeData();
+          let maxFeePerGas = feeData.maxFeePerGas;
+          if (maxFeePerGas) {
+            maxFeePerGas = (maxFeePerGas * 120n) / 100n;
+          }
+          const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas;
+
+          console.log(`Attempt ${retries + 1}: maxFeePerGas = ${maxFeePerGas}`);
+
+          tx = await contract.issueCertificate(
+            finalData.certId,
+            finalData.cid,
+            finalData.pdfHashHex,
+            finalData.signature,
+            finalData.issuer,
+            { maxFeePerGas, maxPriorityFeePerGas }
+          );
+
+          receipt = await tx.wait();
+          break;
+        } catch (error) {
+          if (error?.code === -32603 && error?.message?.includes("max fee per gas less than block base fee")) {
+            retries++;
+            if (retries === maxRetries) {
+              throw new Error("Transaction failed after multiple retries due to gas fee issues.");
+            }
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          } else {
+            throw error;
+          }
+        }
+      }
+
+      // ---- STEP 7: STORE CERTIFICATE DATA IN FIRESTORE ----
+      const certDocRef = doc(db, "certificates", form.certId);
+      await setDoc(certDocRef, {
+        studentId: form.studentId,
+        studentName: form.studentName,
+        course: form.course,
+        certId: form.certId,
+        issuer: issuer,
+        transactionHash: receipt.hash,
+        ipfsCid: finalData.cid,
+        aesKey: finalData.aesKeyWithIv,
+        verificationUrl: finalData.verificationUrl,
+        issuedAt: serverTimestamp(),
+        universityName: university?.universityName || "CertVerify University",
+      });
+
+      // ---- STEP 8: UPDATE UI ----
       setIssued(true);
       setTxHash(receipt.hash);
       setVerificationUrl(finalData.verificationUrl);
       setAesKey(finalData.aesKeyWithIv);
-      alert("✅ Certificate issued and recorded on blockchain!");
+      alert("✅ Certificate issued, stored in Firestore, and recorded on blockchain!");
     } catch (error) {
       console.error(error);
       alert(`Error: ${error.message}`);
@@ -141,20 +218,19 @@ const IssueCertificate = ({ university }) => {
     }
   };
 
-  // ========== PREVIEW PDF DOWNLOAD ==========
+  // ========== PREVIEW PDF DOWNLOAD (optimized as well) ==========
   const generatePDF = async () => {
     const element = document.getElementById("certificate");
     await new Promise(resolve => setTimeout(resolve, 300));
-    const canvas = await html2canvas(element, { scale: 4, useCORS: true });
-    const imgData = canvas.toDataURL("image/png");
+    const canvas = await html2canvas(element, { scale: 2, useCORS: true });
+    const imgData = canvas.toDataURL("image/jpeg", 0.8);
     const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: "a4" });
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-    pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+    pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
     pdf.save(`${form.certId || "certificate"}.pdf`);
   };
 
-  // ========== VERIFICATION URL PREVIEW ==========
   const verificationURL = form.certId
     ? `https://certverify.app/verify/${form.certId}`
     : "https://certverify.app/pending";
@@ -164,9 +240,10 @@ const IssueCertificate = ({ university }) => {
       <h2>Issue Certificate</h2>
 
       <div className="form-section">
-        <input name="studentName" placeholder="Student Name" onChange={handleChange} />
-        <input name="course" placeholder="Course / Degree" onChange={handleChange} />
-        <input name="certId" placeholder="Certificate ID" onChange={handleChange} />
+        <input name="studentName" placeholder="Student Name" value={form.studentName} onChange={handleChange} />
+        <input name="course" placeholder="Course / Degree" value={form.course} onChange={handleChange} />
+        <input name="certId" placeholder="Certificate ID (unique)" value={form.certId} onChange={handleChange} />
+        <input name="studentId" placeholder="Student ID (e.g., email or UID)" value={form.studentId} onChange={handleChange} />
       </div>
 
       <div className="action-buttons">
@@ -180,27 +257,18 @@ const IssueCertificate = ({ university }) => {
 
       {issued && (
         <div className="success-info">
-          <p>✅ Certificate issued on blockchain!</p>
+          <p>✅ Certificate issued on blockchain and saved to Firestore!</p>
+          <p><strong>Student ID:</strong> {form.studentId}</p>
           {ipfsCid && (
             <p>
               📦 <strong>IPFS CID:</strong> <code>{ipfsCid}</code><br />
-              <a
-                href={`https://ipfs.io/ipfs/${ipfsCid}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                View Encrypted PDF on IPFS Gateway
-              </a>
+              <a href={`https://ipfs.io/ipfs/${ipfsCid}`} target="_blank" rel="noopener noreferrer">View Encrypted PDF on IPFS Gateway</a>
             </p>
           )}
           {txHash && (
             <p>
               <strong>Transaction Hash:</strong>{" "}
-              <a
-                href={`https://sepolia.arbiscan.io/tx/${txHash}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+              <a href={`https://sepolia.arbiscan.io/tx/${txHash}`} target="_blank" rel="noopener noreferrer">
                 {txHash.slice(0, 10)}...{txHash.slice(-8)}
               </a>
             </p>
@@ -208,9 +276,7 @@ const IssueCertificate = ({ university }) => {
           {verificationUrl && (
             <p>
               <strong>Verification URL:</strong>{" "}
-              <a href={verificationUrl} target="_blank" rel="noopener noreferrer">
-                {verificationUrl}
-              </a>
+              <a href={verificationUrl} target="_blank" rel="noopener noreferrer">{verificationUrl}</a>
             </p>
           )}
           {aesKey && (

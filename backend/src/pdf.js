@@ -3,26 +3,45 @@ const PDFDocument = require('pdfkit');
 async function generatePDF(formData) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    const doc = new PDFDocument({ margin: 50 });
+    const doc = new PDFDocument({ margin: 50, size: 'A4', layout: 'landscape' });
 
     doc.on('data', chunks.push.bind(chunks));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    // Example certificate layout
-    doc.fontSize(25).text('Certificate of Completion', { align: 'center' });
-    doc.moveDown();
-    doc.fontSize(18).text(`This is to certify that`, { align: 'center' });
-    doc.fontSize(22).text(formData.studentName, { align: 'center', underline: true });
-    doc.moveDown();
-    doc.fontSize(18).text(`has successfully completed the course`, { align: 'center' });
-    doc.fontSize(20).text(formData.course, { align: 'center', bold: true });
-    doc.moveDown();
-    doc.fontSize(14).text(`Date: ${formData.date}`, { align: 'center' });
+    // Use university name from formData or a default
+    const universityName = formData.universityName || 'CertVerify University';
 
-    // QR code will be embedded later (optional – you can generate and embed here)
-    // For simplicity, we skip QR embedding in PDF; the verification URL is separate.
-    // If you want QR, you would generate a QR image and embed it with doc.image().
+    // Format current date as DD/MM/YYYY (e.g., 22/2/2026)
+    const today = new Date();
+    const day = today.getDate();
+    const month = today.getMonth() + 1; // months are 0-based
+    const year = today.getFullYear();
+    const dateStr = `${day}/${month}/${year}`;
+
+    // Certificate layout (matching your expected screenshot)
+    doc.fontSize(26).font('Helvetica-Bold').text(universityName, { align: 'center' });
+    doc.moveDown(0.5);
+    doc.fontSize(22).font('Helvetica').text('Blockchain Certificate', { align: 'center' });
+    doc.moveDown(1);
+    doc.fontSize(16).text('This certifies that', { align: 'center' });
+    doc.moveDown(0.5);
+    doc.fontSize(24).font('Helvetica-Bold').text(formData.studentName, { align: 'center' });
+    doc.moveDown(0.5);
+    doc.fontSize(16).font('Helvetica').text('has successfully completed', { align: 'center' });
+    doc.moveDown(0.5);
+    doc.fontSize(20).font('Helvetica-Bold').text(formData.course, { align: 'center' });
+    doc.moveDown(2);
+
+    // Bottom line: Date Issued (left) and Certificate ID (right)
+    doc.fontSize(14).font('Helvetica');
+    doc.text(`Date Issued: ${dateStr}`, { align: 'left', continued: true });
+    doc.text(`Certificate ID: ${formData.certId}`, { align: 'right' });
+
+    // Optional: QR code can be added here if you generate it
+    // if (formData.qrCodeBuffer) {
+    //   doc.image(formData.qrCodeBuffer, 450, 400, { width: 100 });
+    // }
 
     doc.end();
   });
