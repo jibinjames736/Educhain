@@ -31,7 +31,7 @@ const IssueCertificate = ({ university }) => {
   const generatePDFBase64 = async () => {
     const element = document.getElementById("certificate");
     await new Promise(resolve => setTimeout(resolve, 300));
-    // Use scale 2 (instead of 4) and JPEG compression
+    // Use scale 2 and JPEG compression
     const canvas = await html2canvas(element, { 
       scale: 2, 
       useCORS: true 
@@ -90,7 +90,7 @@ const IssueCertificate = ({ university }) => {
       await provider.send("eth_requestAccounts", []);
       let signer = await provider.getSigner();
 
-      // Network check (Arbitrum Sepolia) – same as before
+      // Network check (Arbitrum Sepolia)
       const network = await signer.provider.getNetwork();
       const targetChainId = 421614n;
       if (network.chainId !== targetChainId) {
@@ -195,13 +195,15 @@ const IssueCertificate = ({ university }) => {
         studentName: form.studentName,
         course: form.course,
         certId: form.certId,
-        issuer: issuer,
+        issuer: issuer, // consider storing as lowercase for consistency
         transactionHash: receipt.hash,
         ipfsCid: finalData.cid,
         aesKey: finalData.aesKeyWithIv,
         verificationUrl: finalData.verificationUrl,
         issuedAt: serverTimestamp(),
         universityName: university?.universityName || "CertVerify University",
+        // NEW: store university ID from the logged‑in university
+        universityId: university?.id || university?.universityId || null,
       });
 
       // ---- STEP 8: UPDATE UI ----
@@ -218,7 +220,7 @@ const IssueCertificate = ({ university }) => {
     }
   };
 
-  // ========== PREVIEW PDF DOWNLOAD (optimized as well) ==========
+  // ========== PREVIEW PDF DOWNLOAD ==========
   const generatePDF = async () => {
     const element = document.getElementById("certificate");
     await new Promise(resolve => setTimeout(resolve, 300));
