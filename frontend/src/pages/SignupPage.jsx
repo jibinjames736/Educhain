@@ -1,17 +1,25 @@
 import { useState, useEffect } from "react";
 import "../styles/SignupPage.css";
-import { doc, setDoc, getDoc } from "firebase/firestore";
+import {
+  doc,
+  setDoc,
+  getDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+} from "firebase/firestore";
 import { db, auth } from "../firebase";
 import { signInAnonymously } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 
 const SignupPage = () => {
 
+  const navigate = useNavigate();
+
   const [role, setRole] = useState("STUDENT");
   const [walletAddress, setWalletAddress] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
-
-  const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
     name: "",
@@ -20,6 +28,12 @@ const SignupPage = () => {
     registrationId: "",
     email: "",
   });
+
+  /* ================= EMAIL VALIDATION ================= */
+  const isValidEmail = (email) => {
+    if (!email) return true;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
 
   /* ================= CONNECT WALLET ================= */
   const connectWallet = async () => {
@@ -34,7 +48,7 @@ const SignupPage = () => {
     setIsConnecting(true);
 
     try {
-      /* Force MetaMask account selector */
+
       await window.ethereum.request({
         method: "wallet_requestPermissions",
         params: [{ eth_accounts: {} }],
@@ -57,7 +71,7 @@ const SignupPage = () => {
     }
   };
 
-  /* ================= LOAD + LISTEN WALLET ================= */
+  /* ================= WALLET LISTENER ================= */
   useEffect(() => {
 
     const savedWallet = localStorage.getItem("wallet");
@@ -73,10 +87,9 @@ const SignupPage = () => {
         return;
       }
 
-      const newAddress = accounts[0];
-
-      setWalletAddress(newAddress);
-      localStorage.setItem("wallet", newAddress);
+      const addr = accounts[0];
+      setWalletAddress(addr);
+      localStorage.setItem("wallet", addr);
     };
 
     window.ethereum.on("accountsChanged", handleAccountsChanged);
@@ -107,35 +120,89 @@ const SignupPage = () => {
       return;
     }
 
+    if (!isValidEmail(formData.email)) {
+      alert("Invalid email format");
+      return;
+    }
+
     try {
 
       await signInAnonymously(auth);
 
-      const userRef = doc(db, "users", walletAddress);
-      const existingUser = await getDoc(userRef);
+      const usersRef = collection(db, "users");
 
-      /* ---------- EXISTING USER ---------- */
-      if (existingUser.exists()) {
+      /* ========= WALLET UNIQUE ========= */
+      const walletRef = doc(db, "users", walletAddress);
+      const walletSnap = await getDoc(walletRef);
 
-        const userData = existingUser.data();
+      if (walletSnap.exists()) {
+
+        const existingUser = walletSnap.data();
+
+        alert(`Wallet already registered as ${existingUser.role}`);
 
         localStorage.setItem(
           "userData",
-          JSON.stringify(userData)
+          JSON.stringify(existingUser)
         );
 
-        alert("Wallet already registered");
-
-        if (userData.role === "STUDENT")
+        if (existingUser.role === "STUDENT")
           navigate("/studentdashboard");
-
-        if (userData.role === "UNIVERSITY")
+        else
           navigate("/universitydashboard");
 
         return;
       }
 
-      /* ---------- CREATE USER ---------- */
+      /* ========= EMAIL UNIQUE ========= */
+      if (formData.email) {
+
+        const emailQuery = query(
+          usersRef,
+          where("email", "==", formData.email)
+        );
+
+        const emailSnap = await getDocs(emailQuery);
+
+        if (!emailSnap.empty) {
+          alert("Email already registered");
+          return;
+        }
+      }
+
+      /* ========= STUDENT ID UNIQUE ========= */
+      if (role === "STUDENT") {
+
+        const studentQuery = query(
+          usersRef,
+          where("studentId", "==", formData.studentId)
+        );
+
+        const studentSnap = await getDocs(studentQuery);
+
+        if (!studentSnap.empty) {
+          alert("Student ID already exists");
+          return;
+        }
+      }
+
+      /* ========= ACCREDITATION UNIQUE ========= */
+      if (role === "UNIVERSITY") {
+
+        const regQuery = query(
+          usersRef,
+          where("registrationId", "==", formData.registrationId)
+        );
+
+        const regSnap = await getDocs(regQuery);
+
+        if (!regSnap.empty) {
+          alert("Accreditation ID already registered");
+          return;
+        }
+      }
+
+      /* ========= CREATE USER ========= */
       const payload = {
         wallet: walletAddress,
         role,
@@ -150,20 +217,18 @@ const SignupPage = () => {
       }
 
       if (role === "UNIVERSITY") {
-        payload.universityName =
-          formData.universityName;
-        payload.registrationId =
-          formData.registrationId;
+        payload.universityName = formData.universityName;
+        payload.registrationId = formData.registrationId;
       }
 
-      await setDoc(userRef, payload);
-
-      alert("Signup successful!");
+      await setDoc(walletRef, payload);
 
       localStorage.setItem(
         "userData",
         JSON.stringify(payload)
       );
+
+      alert("Signup successful!");
 
       if (role === "STUDENT")
         navigate("/studentdashboard");
@@ -176,13 +241,13 @@ const SignupPage = () => {
     }
   };
 
+  /* ================= UI ================= */
   return (
     <div className="signup-page">
       <div className="signup-card">
 
         <h2>Sign Up</h2>
 
-        {/* ROLE */}
         <div className="role-toggle">
           <button
             type="button"
@@ -201,14 +266,8 @@ const SignupPage = () => {
           </button>
         </div>
 
-        {/* WALLET ADDRESS FIELD */}
-        <input
-          value={walletAddress}
-          readOnly
-          placeholder="Wallet Address"
-        />
+        <input value={walletAddress} readOnly placeholder="Wallet Address" />
 
-        {/* CONNECT BUTTON */}
         <button
           type="button"
           className="primary-btn"
@@ -217,7 +276,6 @@ const SignupPage = () => {
           Connect Wallet
         </button>
 
-        {/* FORM */}
         <form onSubmit={handleSubmit}>
 
           {role === "STUDENT" && (
@@ -263,10 +321,7 @@ const SignupPage = () => {
             onChange={handleChange}
           />
 
-          <button
-            type="submit"
-            className="primary-btn"
-          >
+          <button type="submit" className="primary-btn">
             Submit
           </button>
 

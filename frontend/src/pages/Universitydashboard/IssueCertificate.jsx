@@ -3,7 +3,8 @@ import "../../styles/IssueCertificate.css";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { QRCodeCanvas } from "qrcode.react";
-import { BrowserProvider } from "ethers"; // ethers v6
+import { BrowserProvider, Contract } from "ethers"; // ethers v6
+import contractABI from "/src/contractABI.json";
 
 const IssueCertificate = ({ university }) => {
   const [form, setForm] = useState({
@@ -17,14 +18,11 @@ const IssueCertificate = ({ university }) => {
   const [txHash, setTxHash] = useState(null);
   const [verificationUrl, setVerificationUrl] = useState(null);
   const [aesKey, setAesKey] = useState(null);
+  const [ipfsCid, setIpfsCid] = useState(null); // <-- NEW STATE
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
-
-  const verificationURL = form.certId
-    ? `https://certverify.app/verify/${form.certId}`
-    : "https://certverify.app/pending";
 
   // ========== MAIN ISSUE FUNCTION ==========
   const issueCertificate = async () => {
@@ -38,9 +36,11 @@ const IssueCertificate = ({ university }) => {
     setTxHash(null);
     setVerificationUrl(null);
     setAesKey(null);
+    setIpfsCid(null); // reset
 
     try {
       const backendUrl = import.meta.env.VITE_BACKEND_URL;
+      const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS;
 
       // ---- STEP 1: PREPARE ----
       const prepareRes = await fetch(`${backendUrl}/api/prepare`, {
@@ -48,59 +48,91 @@ const IssueCertificate = ({ university }) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      if (!prepareRes.ok) {
-        const errorText = await prepareRes.text();
-        throw new Error(`Prepare failed (${prepareRes.status}): ${errorText}`);
-      }
+      if (!prepareRes.ok) throw new Error(`Prepare failed (${prepareRes.status})`);
       const { pdfHash, tempId } = await prepareRes.json();
 
-      // ---- STEP 2: CONNECT TO METAMASK AND SIGN ----
-      if (!window.ethereum) {
-        throw new Error("MetaMask is not installed.");
-      }
+      // ---- STEP 2: CONNECT TO METAMASK AND ENSURE CORRECT NETWORK ----
+      if (!window.ethereum) throw new Error("MetaMask not installed");
       const provider = new BrowserProvider(window.ethereum);
-      await provider.send("eth_requestAccounts", []); // triggers connection if needed
-      const signer = await provider.getSigner();
-      const issuer = await signer.getAddress(); // address that will sign
-      console.log("Signer address:", issuer);
+      await provider.send("eth_requestAccounts", []);
+      let signer = await provider.getSigner();
 
-      const signature = await signer.signMessage(pdfHash); // user signs the hash
-      console.log("Signature obtained");
+      // ---- NETWORK CHECK (Arbitrum Sepolia = chainId 421614) ----
+      const network = await signer.provider.getNetwork();
+      const targetChainId = 421614n;
 
-      // ---- STEP 3: FINALIZE ----
+      if (network.chainId !== targetChainId) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: '0x' + targetChainId.toString(16) }],
+          });
+          const newProvider = new BrowserProvider(window.ethereum);
+          signer = await newProvider.getSigner();
+        } catch (switchError) {
+          if (switchError.code === 4902) {
+            await window.ethereum.request({
+              method: 'wallet_addEthereumChain',
+              params: [{
+                chainId: '0x' + targetChainId.toString(16),
+                chainName: 'Arbitrum Sepolia',
+                nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+                rpcUrls: ['https://sepolia-rollup.arbitrum.io/rpc'],
+                blockExplorerUrls: ['https://sepolia.arbiscan.io/'],
+              }],
+            });
+            const newProvider = new BrowserProvider(window.ethereum);
+            signer = await newProvider.getSigner();
+          } else {
+            throw new Error('Please switch to Arbitrum Sepolia manually');
+          }
+        }
+      }
+
+      const issuer = await signer.getAddress();
+      const signature = await signer.signMessage(pdfHash);
+      console.log("Hash signed by", issuer);
+
+      // ---- STEP 3: FINALIZE (backend encrypts, uploads to IPFS) ----
       const finalizeRes = await fetch(`${backendUrl}/api/finalize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tempId, signature, issuer }),
       });
-      if (!finalizeRes.ok) {
-        const errorText = await finalizeRes.text();
-        throw new Error(`Finalize failed (${finalizeRes.status}): ${errorText}`);
-      }
-      const { pdfData, aesKey, verificationUrl, txHash } = await finalizeRes.json();
+      if (!finalizeRes.ok) throw new Error(`Finalize failed (${finalizeRes.status})`);
+      const finalData = await finalizeRes.json();
+      // finalData contains: cid, pdfHashHex, signature, issuer, certId, encryptedPdfBase64, aesKeyWithIv, verificationUrl
+
+      // Save IPFS CID
+      setIpfsCid(finalData.cid);
 
       // ---- STEP 4: DOWNLOAD ENCRYPTED PDF ----
-      const byteCharacters = atob(pdfData);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: "application/pdf" });
+      const pdfBytes = Uint8Array.from(atob(finalData.encryptedPdfBase64), c => c.charCodeAt(0));
+      const blob = new Blob([pdfBytes], { type: "application/pdf" });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", `${form.certId}.encrypted.pdf`);
-      document.body.appendChild(link);
+      link.download = `${form.certId}.encrypted.pdf`;
       link.click();
-      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
 
-      // ---- STEP 5: UPDATE UI ----
+      // ---- STEP 5: SUBMIT TO BLOCKCHAIN (using the same signer) ----
+      const contract = new Contract(contractAddress, contractABI, signer);
+      const tx = await contract.issueCertificate(
+        finalData.certId,
+        finalData.cid,
+        finalData.pdfHashHex,
+        finalData.signature,
+        finalData.issuer
+      );
+      const receipt = await tx.wait();
+
+      // ---- STEP 6: UPDATE UI ----
       setIssued(true);
-      setTxHash(txHash);
-      setVerificationUrl(verificationUrl);
-      setAesKey(aesKey);
-      alert("✅ Certificate issued successfully! Encrypted PDF downloaded.");
+      setTxHash(receipt.hash);
+      setVerificationUrl(finalData.verificationUrl);
+      setAesKey(finalData.aesKeyWithIv);
+      alert("✅ Certificate issued and recorded on blockchain!");
     } catch (error) {
       console.error(error);
       alert(`Error: ${error.message}`);
@@ -112,7 +144,7 @@ const IssueCertificate = ({ university }) => {
   // ========== PREVIEW PDF DOWNLOAD ==========
   const generatePDF = async () => {
     const element = document.getElementById("certificate");
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await new Promise(resolve => setTimeout(resolve, 300));
     const canvas = await html2canvas(element, { scale: 4, useCORS: true });
     const imgData = canvas.toDataURL("image/png");
     const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: "a4" });
@@ -121,6 +153,11 @@ const IssueCertificate = ({ university }) => {
     pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
     pdf.save(`${form.certId || "certificate"}.pdf`);
   };
+
+  // ========== VERIFICATION URL PREVIEW ==========
+  const verificationURL = form.certId
+    ? `https://certverify.app/verify/${form.certId}`
+    : "https://certverify.app/pending";
 
   return (
     <div className="issue-container">
@@ -144,9 +181,21 @@ const IssueCertificate = ({ university }) => {
       {issued && (
         <div className="success-info">
           <p>✅ Certificate issued on blockchain!</p>
+          {ipfsCid && (
+            <p>
+              📦 <strong>IPFS CID:</strong> <code>{ipfsCid}</code><br />
+              <a
+                href={`https://ipfs.io/ipfs/${ipfsCid}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                View Encrypted PDF on IPFS Gateway
+              </a>
+            </p>
+          )}
           {txHash && (
             <p>
-              Transaction Hash:{" "}
+              <strong>Transaction Hash:</strong>{" "}
               <a
                 href={`https://sepolia.arbiscan.io/tx/${txHash}`}
                 target="_blank"
@@ -158,7 +207,7 @@ const IssueCertificate = ({ university }) => {
           )}
           {verificationUrl && (
             <p>
-              Verification URL:{" "}
+              <strong>Verification URL:</strong>{" "}
               <a href={verificationUrl} target="_blank" rel="noopener noreferrer">
                 {verificationUrl}
               </a>
@@ -166,7 +215,7 @@ const IssueCertificate = ({ university }) => {
           )}
           {aesKey && (
             <p>
-              🔑 Decryption Key (share with student): <code>{aesKey}</code>
+              🔑 <strong>Decryption Key</strong> (share with student): <code>{aesKey}</code>
             </p>
           )}
         </div>
@@ -175,7 +224,6 @@ const IssueCertificate = ({ university }) => {
       <div className="certificate-wrapper">
         <div id="certificate" className="certificate">
           <div className="cert-inner">
-            {/* HEADER */}
             <div className="cert-header">
               <h4 className="cert-org">{university?.universityName || "CertVerify University"}</h4>
               <h1 className="cert-title">Certificate of Completion</h1>
@@ -185,7 +233,6 @@ const IssueCertificate = ({ university }) => {
               <h3 className="cert-course">{form.course || "Course Name"}</h3>
             </div>
 
-            {/* FOOTER */}
             <div className="cert-bottom">
               <div className="cert-meta">
                 <p>Date Issued</p>

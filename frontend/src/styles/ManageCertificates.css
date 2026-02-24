@@ -1,63 +1,128 @@
 .manage-container {
-  background:white;
-  padding:30px;
-  border-radius:18px;
-  box-shadow:0 10px 30px rgba(0,0,0,0.08);
+  background: white;
+  padding: 30px;
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.08);
 }
 
-/* TABLE */
+/* ================= SEARCH BAR ================= */
+
+.search-wrapper {
+  position: relative;
+  width: 340px;
+  margin-bottom: 24px;
+}
+
+.search-wrapper input {
+  width: 100%;
+  padding: 12px 42px 12px 44px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  font-size: 14px;
+  background: #f8fafc;
+  transition: all 0.25s ease;
+  outline: none;
+}
+
+.search-wrapper input:focus {
+  background: white;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.6;
+}
+
+.clear-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.clear-btn:hover {
+  opacity: 1;
+}
+
+/* ================= TABLE ================= */
+
 table {
-  width:100%;
-  border-collapse:separate;
-  border-spacing:0 14px;
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 14px;
 }
 
 th {
-  text-align:left;
-  font-size:0.8rem;
-  color:#64748b;
-  padding:0 16px 8px;
+  text-align: left;
+  font-size: 0.8rem;
+  color: #64748b;
+  padding: 0 16px 8px;
 }
 
 tbody tr {
-  background:white;
-  box-shadow:0 10px 28px rgba(0,0,0,0.08);
+  background: white;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.08);
+  transition: 0.25s ease;
+}
+
+tbody tr:hover {
+  transform: translateY(-2px);
 }
 
 td {
-  padding:16px;
+  padding: 16px;
 }
 
-/* STATUS BADGES */
+/* ================= STATUS ================= */
+
 .status {
-  padding:6px 14px;
-  border-radius:999px;
-  font-size:0.75rem;
-  font-weight:700;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
 }
 
-/* ACTIVE */
 .status.active {
-  background:#dcfce7;
-  color:#166534;
+  background: #dcfce7;
+  color: #166534;
 }
 
-/* REVOKED */
 .status.revoked {
-  background:#fee2e2;
-  color:#991b1b;
+  background: #fee2e2;
+  color: #991b1b;
 }
 
-/* BUTTON */
+/* ================= REVOKE BUTTON (BADGE STYLE) ================= */
+
 .revoke-btn {
-  background:#ef4444;
-  color:white;
-  border:none;
-  padding:6px 12px;
-  border-radius:8px;
-  cursor:pointer;
+  background: #fee2e2;
+  color: #991b1b;
+  border: none;
+  padding: 6px 16px;
+  border-radius: 999px; /* same pill shape as status */
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s ease;
 }
 
+/* Hover */
 .revoke-btn:hover {
-  background:#dc2626;
+  background: #ef4444;
+  color: white;
+  box-shadow: 0 4px 10px rgba(239,68,68,0.25);
+}
+
+/* Click */
+.revoke-btn:active {
+  transform: scale(0.96);
 }

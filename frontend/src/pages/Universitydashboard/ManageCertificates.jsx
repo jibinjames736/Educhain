@@ -1,3 +1,4 @@
+import { useState } from "react";
 import "../../styles/ManageCertificates.css";
 
 const issuedCertificates = [
@@ -21,11 +22,39 @@ const issuedCertificates = [
 
 const ManageCertificates = () => {
 
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const filteredCertificates = issuedCertificates.filter((cert) =>
+    cert.certId.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
     <div className="manage-container">
 
       <h2>Issued Certificates</h2>
 
+      {/* ===== SEARCH BAR ===== */}
+      <div className="search-wrapper">
+        <span className="search-icon">🔍</span>
+
+        <input
+          type="text"
+          placeholder="Search Certificate ID..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+
+        {searchTerm && (
+          <button
+            className="clear-btn"
+            onClick={() => setSearchTerm("")}
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
+      {/* ===== TABLE ===== */}
       <table>
         <thead>
           <tr>
@@ -40,7 +69,7 @@ const ManageCertificates = () => {
         </thead>
 
         <tbody>
-          {issuedCertificates.map((cert, index) => (
+          {filteredCertificates.map((cert, index) => (
             <tr key={index}>
               <td>{cert.certId}</td>
               <td>{cert.student}</td>
@@ -48,16 +77,12 @@ const ManageCertificates = () => {
               <td>{cert.issueDate}</td>
               <td>{cert.txHash}</td>
 
-              {/* STATUS BADGE */}
               <td>
-                <span
-                  className={`status ${cert.status.toLowerCase()}`}
-                >
+                <span className={`status ${cert.status.toLowerCase()}`}>
                   {cert.status}
                 </span>
               </td>
 
-              {/* ACTION */}
               <td>
                 {cert.status === "ACTIVE" && (
                   <button className="revoke-btn">
@@ -65,10 +90,10 @@ const ManageCertificates = () => {
                   </button>
                 )}
               </td>
-
             </tr>
           ))}
         </tbody>
+
       </table>
 
     </div>
