@@ -1,0 +1,165 @@
+/* =====================================================
+   COLOR SYSTEM
+===================================================== */
+
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1e3a8a;
+  --sidebar-start: #0b132b;
+  --sidebar-end: #1c2541;
+  --danger: #ef4444;
+  --muted: #64748b;
+}
+
+/* =====================================================
+   ROOT LAYOUT
+===================================================== */
+
+.dashboard {
+  display: flex;
+  height: 100vh;
+  background: linear-gradient(135deg,#eef2f7,#f8fafc);
+  font-family: Inter, Arial, sans-serif;
+}
+
+/* =====================================================
+   SIDEBAR
+===================================================== */
+
+.sidebar {
+  width: 220px;
+  background: linear-gradient(
+    180deg,
+    var(--sidebar-start),
+    var(--sidebar-end)
+  );
+  color: white;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* AVATAR */
+
+.avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #d4af37;
+  color: #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+/* NAVIGATION */
+
+.sidebar nav button {
+  width: 100%;
+  padding: 11px;
+  margin-bottom: 8px;
+  background: transparent;
+  color: #cbd5e1;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: 0.2s;
+}
+
+.sidebar nav button:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+.sidebar nav button.active {
+  background: linear-gradient(
+    135deg,
+    var(--primary),
+    var(--primary-dark)
+  );
+  color: white;
+  font-weight: 600;
+}
+
+/* LOGOUT */
+
+.logout-btn {
+  margin-top: auto;
+  background: var(--danger);
+  border: none;
+  color: white;
+  padding: 11px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+/* =====================================================
+   CONTENT AREA
+===================================================== */
+
+.content {
+  flex: 1;
+  padding: 36px;
+  overflow-y: auto;
+}
+
+/* =====================================================
+   STATS CARDS
+===================================================== */
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(220px,1fr));
+  gap: 20px;
+}
+
+.stat-card {
+  background: white;
+  padding: 24px;
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.08);
+}
+
+.stat-card h3 {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.stat-card p {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+/* =====================================================
+   TABLE
+===================================================== */
+
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 14px;
+}
+
+tbody tr {
+  background: white;
+  border-radius: 14px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.08);
+}
+
+td {
+  padding: 16px;
+}
+
+/* STATUS */
+
+.status.active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status.revoked {
+  background: #fee2e2;
+  color: #991b1b;
+}

@@ -1,0 +1,15 @@
+.placeholder {
+  background: white;
+  padding: 40px;
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+}
+
+.placeholder h2 {
+  margin-bottom: 16px;
+}
+
+.placeholder p {
+  margin-bottom: 8px;
+  color:#475569;
+}

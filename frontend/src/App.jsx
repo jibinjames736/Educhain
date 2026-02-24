@@ -4,7 +4,7 @@ import HomePage from "./pages/HomePage";
 import VerifyPage from "./pages/VerifyPage";
 import SignupPage from "./pages/SignupPage";
 import Studentdashboard from "./pages/Studentdashboard";
-import Universitydashboard from "./pages/Universitydashboard";
+import Universitydashboard from "./pages/Universitydashboard/Universitydashboard";
 
 const router = createBrowserRouter([
   {

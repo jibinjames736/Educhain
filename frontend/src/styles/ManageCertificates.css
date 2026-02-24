@@ -1,0 +1,63 @@
+.manage-container {
+  background:white;
+  padding:30px;
+  border-radius:18px;
+  box-shadow:0 10px 30px rgba(0,0,0,0.08);
+}
+
+/* TABLE */
+table {
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0 14px;
+}
+
+th {
+  text-align:left;
+  font-size:0.8rem;
+  color:#64748b;
+  padding:0 16px 8px;
+}
+
+tbody tr {
+  background:white;
+  box-shadow:0 10px 28px rgba(0,0,0,0.08);
+}
+
+td {
+  padding:16px;
+}
+
+/* STATUS BADGES */
+.status {
+  padding:6px 14px;
+  border-radius:999px;
+  font-size:0.75rem;
+  font-weight:700;
+}
+
+/* ACTIVE */
+.status.active {
+  background:#dcfce7;
+  color:#166534;
+}
+
+/* REVOKED */
+.status.revoked {
+  background:#fee2e2;
+  color:#991b1b;
+}
+
+/* BUTTON */
+.revoke-btn {
+  background:#ef4444;
+  color:white;
+  border:none;
+  padding:6px 12px;
+  border-radius:8px;
+  cursor:pointer;
+}
+
+.revoke-btn:hover {
+  background:#dc2626;
+}

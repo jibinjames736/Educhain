@@ -83,7 +83,7 @@ const Studentdashboard = () => {
       .map((n) => n[0])
       .join("") || "U";
 
-  // ✅ WORKING LOGOUT
+  
   const handleLogout = () => {
     // Clear app data
     localStorage.removeItem("userData");

@@ -2,7 +2,8 @@ import "../styles/HomePage.css";
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { doc, getDoc } from "firebase/firestore";
-import { db } from "../firebase";
+import { signInAnonymously } from "firebase/auth";
+import { db, auth } from "../firebase";
 
 const HomePage = () => {
   const navigate = useNavigate();
@@ -10,7 +11,9 @@ const HomePage = () => {
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
 
-  // ✅ WORKING: Force MetaMask to show popup EVERY TIME
+  /* ===============================
+     CONNECT WALLET + FIREBASE LOGIN
+  =============================== */
   const connectWalletAndRoute = async () => {
     if (!window.ethereum) {
       alert("Please install MetaMask");
@@ -21,29 +24,29 @@ const HomePage = () => {
     setIsConnecting(true);
 
     try {
-      // Clear our app data
       localStorage.removeItem("userData");
-      
-      // ✅ TRICK: Request permissions first to force popup
+
+      // ✅ Force MetaMask popup
       try {
         await window.ethereum.request({
           method: "wallet_requestPermissions",
           params: [{ eth_accounts: {} }],
         });
-      } catch (permError) {
-        // User cancelled permissions - that's okay
-        console.log("Permission request cancelled or not supported");
+      } catch {
+        console.log("Permission cancelled");
       }
-      
-      // Now request accounts - THIS SHOULD SHOW POPUP
+
       const accounts = await window.ethereum.request({
         method: "eth_requestAccounts",
       });
 
       const walletAddress = accounts[0];
-      
+
       localStorage.setItem("wallet", walletAddress);
       setWallet(walletAddress);
+
+      /* ✅ Firebase Anonymous Login */
+      await signInAnonymously(auth);
 
       const snap = await getDoc(doc(db, "users", walletAddress));
 
@@ -55,22 +58,26 @@ const HomePage = () => {
       const userData = snap.data();
       localStorage.setItem("userData", JSON.stringify(userData));
 
-      if (userData.role === "STUDENT") navigate("/studentdashboard");
-      if (userData.role === "UNIVERSITY") navigate("/universitydashboard");
-      
+      if (userData.role === "STUDENT")
+        navigate("/studentdashboard");
+
+      if (userData.role === "UNIVERSITY")
+        navigate("/universitydashboard");
+
     } catch (err) {
       console.error(err);
-      if (err.code === 4001) {
+
+      if (err.code === 4001)
         alert("Wallet connection cancelled");
-      } else {
+      else
         alert("Failed to connect wallet");
-      }
+
     } finally {
       setIsConnecting(false);
     }
   };
 
-  // ✅ Restore wallet if exists
+  /* ================= RESTORE SESSION ================= */
   useEffect(() => {
     const savedWallet = localStorage.getItem("wallet");
     const userData = localStorage.getItem("userData");
@@ -80,77 +87,86 @@ const HomePage = () => {
     }
   }, []);
 
-  // ✅ Handle account switching
+  /* ================= ACCOUNT SWITCH ================= */
   useEffect(() => {
     if (!window.ethereum) return;
 
     const handleAccountsChanged = async (accounts) => {
       if (accounts.length === 0) {
-        localStorage.removeItem("userData");
-        localStorage.removeItem("wallet");
-        setWallet("");
+        localStorage.clear();
         window.location.href = "/";
+        return;
+      }
+
+      const newAddress = accounts[0];
+      setWallet(newAddress);
+      localStorage.setItem("wallet", newAddress);
+
+      await signInAnonymously(auth);
+
+      const snap = await getDoc(doc(db, "users", newAddress));
+
+      if (snap.exists()) {
+        const userData = snap.data();
+        localStorage.setItem(
+          "userData",
+          JSON.stringify(userData)
+        );
+
+        if (userData.role === "STUDENT")
+          navigate("/studentdashboard");
+
+        if (userData.role === "UNIVERSITY")
+          navigate("/universitydashboard");
       } else {
-        const newAddress = accounts[0];
-        const currentWallet = localStorage.getItem("wallet");
-        
-        if (newAddress !== currentWallet) {
-          localStorage.removeItem("userData");
-          localStorage.setItem("wallet", newAddress);
-          setWallet(newAddress);
-          
-          try {
-            const snap = await getDoc(doc(db, "users", newAddress));
-            if (snap.exists()) {
-              const userData = snap.data();
-              localStorage.setItem("userData", JSON.stringify(userData));
-              
-              if (userData.role === "STUDENT") navigate("/studentdashboard");
-              if (userData.role === "UNIVERSITY") navigate("/universitydashboard");
-            } else {
-              navigate("/signup");
-            }
-          } catch (error) {
-            console.error("Error:", error);
-          }
-        }
+        navigate("/signup");
       }
     };
 
     window.ethereum.on("accountsChanged", handleAccountsChanged);
 
-    return () => {
-      window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
-    };
+    return () =>
+      window.ethereum.removeListener(
+        "accountsChanged",
+        handleAccountsChanged
+      );
   }, [navigate]);
 
-  // Format wallet for display
-  const formatWalletAddress = (address) => {
-    if (!address) return "";
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
-  };
+  const formatWalletAddress = (address) =>
+    address
+      ? `${address.slice(0, 6)}...${address.slice(-4)}`
+      : "";
 
   return (
     <div className="page">
-      {/* NAVBAR */}
+
+      {/* ================= NAVBAR ================= */}
       <header className="topbar">
         <div className="brand">CertVerify</div>
+
         <div className="top-actions">
-          <button 
-            className="connect-btn" 
+          <button
+            className="connect-btn"
             onClick={connectWalletAndRoute}
             disabled={isConnecting}
           >
-            {isConnecting ? "Connecting..." : 
-              wallet ? formatWalletAddress(wallet) : "Connect Wallet"}
+            {isConnecting
+              ? "Connecting..."
+              : wallet
+              ? formatWalletAddress(wallet)
+              : "Connect Wallet"}
           </button>
-          <button className="signup-btn" onClick={() => navigate("/signup")}>
+
+          <button
+            className="signup-btn"
+            onClick={() => navigate("/signup")}
+          >
             Sign Up
           </button>
         </div>
       </header>
 
-      {/* HERO */}
+      {/* ================= HERO ================= */}
       <section className="hero">
         <h1>
           Immutable Trust for <br />
@@ -158,8 +174,8 @@ const HomePage = () => {
         </h1>
 
         <p>
-          Instantly verify the authenticity of certificates using decentralized
-          ledger technology.
+          Instantly verify the authenticity of certificates
+          using decentralized ledger technology.
         </p>
 
         <div className="verify-row">
@@ -169,18 +185,16 @@ const HomePage = () => {
           >
             Verify Certificate
           </button>
-          <span className="upload-icon">↑</span>
         </div>
       </section>
 
-      {/* FEATURES */}
+      {/* ================= FEATURES RESTORED ================= */}
       <section className="features">
         <div className="feature-card">
           <div className="icon">🔍</div>
           <h3>Instant Verification</h3>
           <p>
-            A simple drag-and-drop zone or QR code scanner verifies any
-            certificate against the blockchain.
+            Verify certificates instantly against blockchain.
           </p>
         </div>
 
@@ -188,8 +202,7 @@ const HomePage = () => {
           <div className="icon">🔒</div>
           <h3>Tamper-Proof Storage</h3>
           <p>
-            Certificates are hashed and stored on a decentralized network,
-            making forgery impossible.
+            Certificates stored securely on decentralized networks.
           </p>
         </div>
 
@@ -197,13 +210,12 @@ const HomePage = () => {
           <div className="icon">🔗</div>
           <h3>Easy Sharing</h3>
           <p>
-            Issuers can send digital credentials directly to the user wallet for
-            one-click sharing with employers.
+            Share credentials directly with employers.
           </p>
         </div>
       </section>
 
-      {/* FOOTER */}
+      {/* ================= FOOTER RESTORED ================= */}
       <footer className="footer">
         <p>Supported Blockchains:</p>
         <div className="chains">
@@ -211,32 +223,34 @@ const HomePage = () => {
         </div>
       </footer>
 
-      {/* VERIFY MODAL */}
+      {/* ================= VERIFY MODAL ================= */}
       {showVerifyModal && (
         <div className="modal-overlay">
           <div className="modal">
             <h2>Verify Certificate</h2>
-            <p>Select a verification method</p>
 
             <div className="modal-actions">
               <button
-                className="modal-btn primary"
-                onClick={() => navigate("/verify?mode=upload")}
+                onClick={() =>
+                  navigate("/verify?mode=upload")
+                }
               >
                 Upload Certificate File
               </button>
 
               <button
-                className="modal-btn secondary"
-                onClick={() => navigate("/verify?mode=qr")}
+                onClick={() =>
+                  navigate("/verify?mode=qr")
+                }
               >
                 Scan QR Code
               </button>
             </div>
 
             <button
-              className="modal-close"
-              onClick={() => setShowVerifyModal(false)}
+              onClick={() =>
+                setShowVerifyModal(false)
+              }
             >
               Cancel
             </button>

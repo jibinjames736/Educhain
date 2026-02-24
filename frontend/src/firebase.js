@@ -1,7 +1,8 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
+import { getAuth } from "firebase/auth";   // ✅ MISSING IMPORT
 
-// Your Firebase configuration
+// Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyDzc4rzr1vYjURProQv7Q1sWWnWOQgNipA",
   authDomain: "cert-verify-b1961.firebaseapp.com",
@@ -15,5 +16,6 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// 🔑 EXPORT FIRESTORE INSTANCE (THIS FIXES YOUR ERROR)
+// ✅ Export services
 export const db = getFirestore(app);
+export const auth = getAuth(app);

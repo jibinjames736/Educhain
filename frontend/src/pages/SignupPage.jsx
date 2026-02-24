@@ -1,13 +1,16 @@
 import { useState, useEffect } from "react";
 import "../styles/SignupPage.css";
 import { doc, setDoc, getDoc } from "firebase/firestore";
-import { db } from "../firebase";
+import { db, auth } from "../firebase";
+import { signInAnonymously } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 
 const SignupPage = () => {
+
   const [role, setRole] = useState("STUDENT");
   const [walletAddress, setWalletAddress] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
+
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
@@ -18,183 +21,219 @@ const SignupPage = () => {
     email: "",
   });
 
-  // ✅ WORKING: Connect wallet with guaranteed popup
+  /* ================= CONNECT WALLET ================= */
   const connectWallet = async () => {
+
     if (!window.ethereum) {
       alert("MetaMask not found");
       return;
     }
 
     if (isConnecting) return;
+
     setIsConnecting(true);
 
     try {
-      // Clear any stored wallet
-      localStorage.removeItem("wallet");
-      
-      // ✅ TRICK: Request permissions first
-      try {
-        await window.ethereum.request({
-          method: "wallet_requestPermissions",
-          params: [{ eth_accounts: {} }],
-        });
-      } catch (permError) {
-        // User cancelled - that's okay
-      }
-      
-      // Now request accounts - will show popup
+      /* Force MetaMask account selector */
+      await window.ethereum.request({
+        method: "wallet_requestPermissions",
+        params: [{ eth_accounts: {} }],
+      });
+
       const accounts = await window.ethereum.request({
         method: "eth_requestAccounts",
       });
 
-      const newAddress = accounts[0];
-      setWalletAddress(newAddress);
-      localStorage.setItem("wallet", newAddress);
-      
+      const address = accounts[0];
+
+      setWalletAddress(address);
+      localStorage.setItem("wallet", address);
+
     } catch (err) {
-      console.error("Wallet connection error:", err);
-      
-      if (err.code === 4001) {
-        alert("Wallet connection cancelled");
-      } else {
-        alert("Failed to connect wallet. Please try again.");
-      }
+      console.error(err);
+      alert("Wallet connection failed");
     } finally {
       setIsConnecting(false);
     }
   };
 
-  // Check for existing wallet
+  /* ================= LOAD + LISTEN WALLET ================= */
   useEffect(() => {
+
     const savedWallet = localStorage.getItem("wallet");
-    if (savedWallet) {
-      setWalletAddress(savedWallet);
-    }
+    if (savedWallet) setWalletAddress(savedWallet);
+
+    if (!window.ethereum) return;
+
+    const handleAccountsChanged = (accounts) => {
+
+      if (accounts.length === 0) {
+        setWalletAddress("");
+        localStorage.removeItem("wallet");
+        return;
+      }
+
+      const newAddress = accounts[0];
+
+      setWalletAddress(newAddress);
+      localStorage.setItem("wallet", newAddress);
+    };
+
+    window.ethereum.on("accountsChanged", handleAccountsChanged);
+
+    return () => {
+      window.ethereum.removeListener(
+        "accountsChanged",
+        handleAccountsChanged
+      );
+    };
+
   }, []);
 
-  // Handle form input
+  /* ================= FORM CHANGE ================= */
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value,
+    });
   };
 
-  // Submit signup
+  /* ================= SIGNUP ================= */
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!walletAddress) {
-      alert("Please connect wallet first");
+      alert("Connect wallet first");
       return;
     }
 
-    const userRef = doc(db, "users", walletAddress);
-    const existingUser = await getDoc(userRef);
+    try {
 
-    if (existingUser.exists()) {
-      alert("Wallet already registered. Redirecting...");
-      
-      const userData = existingUser.data();
-      localStorage.setItem("userData", JSON.stringify(userData));
-      
-      if (userData.role === "STUDENT") navigate("/studentdashboard");
-      if (userData.role === "UNIVERSITY") navigate("/universitydashboard");
-      return;
+      await signInAnonymously(auth);
+
+      const userRef = doc(db, "users", walletAddress);
+      const existingUser = await getDoc(userRef);
+
+      /* ---------- EXISTING USER ---------- */
+      if (existingUser.exists()) {
+
+        const userData = existingUser.data();
+
+        localStorage.setItem(
+          "userData",
+          JSON.stringify(userData)
+        );
+
+        alert("Wallet already registered");
+
+        if (userData.role === "STUDENT")
+          navigate("/studentdashboard");
+
+        if (userData.role === "UNIVERSITY")
+          navigate("/universitydashboard");
+
+        return;
+      }
+
+      /* ---------- CREATE USER ---------- */
+      const payload = {
+        wallet: walletAddress,
+        role,
+        email: formData.email || "",
+        approved: role === "STUDENT",
+        createdAt: new Date(),
+      };
+
+      if (role === "STUDENT") {
+        payload.name = formData.name;
+        payload.studentId = formData.studentId;
+      }
+
+      if (role === "UNIVERSITY") {
+        payload.universityName =
+          formData.universityName;
+        payload.registrationId =
+          formData.registrationId;
+      }
+
+      await setDoc(userRef, payload);
+
+      alert("Signup successful!");
+
+      localStorage.setItem(
+        "userData",
+        JSON.stringify(payload)
+      );
+
+      if (role === "STUDENT")
+        navigate("/studentdashboard");
+      else
+        navigate("/universitydashboard");
+
+    } catch (err) {
+      console.error("Signup Error:", err);
+      alert(err.message);
     }
-
-    const payload = {
-      wallet: walletAddress,
-      role,
-      email: formData.email || "",
-      approved: role === "STUDENT",
-      createdAt: new Date(),
-    };
-
-    if (role === "STUDENT") {
-      payload.name = formData.name;
-      payload.studentId = formData.studentId;
-    }
-
-    if (role === "UNIVERSITY") {
-      payload.universityName = formData.universityName;
-      payload.registrationId = formData.registrationId;
-    }
-
-    await setDoc(userRef, payload);
-
-    alert("Signup successful!");
-
-    // Store user data
-    localStorage.setItem("userData", JSON.stringify(payload));
-
-    if (role === "STUDENT") navigate("/studentdashboard");
-    else navigate("/");
-  };
-
-  // Format wallet address
-  const formatWalletAddress = (address) => {
-    if (!address) return "";
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
   return (
     <div className="signup-page">
       <div className="signup-card">
+
         <h2>Sign Up</h2>
 
-        {/* Role Selection */}
+        {/* ROLE */}
         <div className="role-toggle">
           <button
-            className={role === "STUDENT" ? "active" : ""}
             type="button"
+            className={role === "STUDENT" ? "active" : ""}
             onClick={() => setRole("STUDENT")}
           >
             Student
           </button>
+
           <button
-            className={role === "UNIVERSITY" ? "active" : ""}
             type="button"
+            className={role === "UNIVERSITY" ? "active" : ""}
             onClick={() => setRole("UNIVERSITY")}
           >
             University
           </button>
         </div>
 
-        {/* Wallet */}
+        {/* WALLET ADDRESS FIELD */}
         <input
-          type="text"
-          placeholder="Wallet address"
           value={walletAddress}
           readOnly
+          placeholder="Wallet Address"
         />
 
+        {/* CONNECT BUTTON */}
         <button
           type="button"
           className="primary-btn"
           onClick={connectWallet}
-          disabled={isConnecting}
         >
-          {isConnecting ? "Connecting..." : 
-            walletAddress ? formatWalletAddress(walletAddress) : "Connect Wallet"}
+          Connect Wallet
         </button>
 
-        {/* Form */}
+        {/* FORM */}
         <form onSubmit={handleSubmit}>
+
           {role === "STUDENT" && (
             <>
               <input
-                type="text"
                 name="name"
                 placeholder="Student Name"
-                onChange={handleChange}
                 required
-                disabled={!walletAddress}
+                onChange={handleChange}
               />
+
               <input
-                type="text"
                 name="studentId"
-                placeholder="Student ID / Roll No"
-                onChange={handleChange}
+                placeholder="Student ID"
                 required
-                disabled={!walletAddress}
+                onChange={handleChange}
               />
             </>
           )}
@@ -202,40 +241,37 @@ const SignupPage = () => {
           {role === "UNIVERSITY" && (
             <>
               <input
-                type="text"
                 name="universityName"
                 placeholder="University Name"
-                onChange={handleChange}
                 required
-                disabled={!walletAddress}
+                onChange={handleChange}
               />
+
               <input
-                type="text"
                 name="registrationId"
-                placeholder="Registration / Accreditation ID"
-                onChange={handleChange}
+                placeholder="Accreditation ID"
                 required
-                disabled={!walletAddress}
+                onChange={handleChange}
               />
             </>
           )}
 
           <input
-            type="email"
             name="email"
-            placeholder="Email (optional)"
+            type="email"
+            placeholder="Email"
             onChange={handleChange}
-            disabled={!walletAddress}
           />
 
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             className="primary-btn"
-            disabled={!walletAddress || isConnecting}
           >
             Submit
           </button>
+
         </form>
+
       </div>
     </div>
   );

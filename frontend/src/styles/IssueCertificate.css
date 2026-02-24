@@ -1,0 +1,162 @@
+/* ================= CONTAINER ================= */
+
+.issue-container {
+  background: white;
+  padding: 34px;
+  border-radius: 18px;
+  box-shadow: 0 12px 35px rgba(0,0,0,0.08);
+}
+
+/* ================= FORM ================= */
+
+.form-section {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 32px;   /* ✅ space before buttons */
+}
+
+.form-section input {
+  flex: 1;
+  min-width: 220px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 6px;
+  transition: 0.2s;
+}
+
+.form-section input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+  outline: none;
+}
+
+/* ================= BUTTON GROUP ================= */
+
+.action-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 45px;   /* ✅ BIG spacing before preview */
+}
+
+/* BUTTON BASE */
+
+.issue-btn {
+  padding: 10px 22px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  min-width: 170px;
+  transition: all 0.25s ease;
+}
+
+/* ISSUE BUTTON */
+
+.issue-btn.primary {
+  background: linear-gradient(135deg,#2563eb,#1e3a8a);
+  color: white;
+}
+
+.issue-btn.primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(37,99,235,0.35);
+}
+
+/* DOWNLOAD BUTTON */
+
+.issue-btn.secondary {
+  background: #111827;
+  color: white;
+}
+
+.issue-btn.secondary:hover {
+  background: #1f2937;
+}
+
+/* ================= CERTIFICATE PREVIEW ================= */
+
+.certificate-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;   /* ✅ breathing space */
+}
+
+/* ================= CERTIFICATE ================= */
+
+.certificate {
+  width: 842px;
+  height: 595px;
+  background: white;
+  border: 10px solid #d4af37;
+  box-shadow: 0 20px 45px rgba(0,0,0,0.15);
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.cert-inner {
+  width: 94%;
+  height: 92%;
+  border: 3px solid #d4af37;
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  text-align: center;
+  position: relative;
+}
+
+/* WATERMARK */
+
+.cert-inner::before {
+  content: "CERTVERIFY";
+  position: absolute;
+  font-size: 90px;
+  color: rgba(0,0,0,0.04);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* ================= TEXT ================= */
+
+.cert-title {
+  font-size: 36px;
+}
+
+.cert-name {
+  font-size: 34px;
+  font-weight: bold;
+  color: #1e3a8a;
+  margin: 12px 0;
+}
+
+.cert-course {
+  font-size: 22px;
+}
+
+/* ================= FOOTER ================= */
+
+.cert-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cert-meta strong {
+  font-size: 16px;
+}
+
+/* ================= QR ================= */
+
+.cert-qr span {
+  display: block;
+  font-size: 12px;
+  margin-top: 6px;
+  color: #475569;
+}
