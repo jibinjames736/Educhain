@@ -1,0 +1,139 @@
+.verify-page{
+  min-height:100vh;
+  background:#f8fafc;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:60px 20px;
+}
+
+/* HERO */
+.verify-hero{
+  text-align:center;
+  max-width:720px;
+  width:100%;
+}
+
+.verify-hero h1{
+  font-size:38px;
+  margin-bottom:8px;
+}
+
+.verify-hero p{
+  color:#64748b;
+  margin-bottom:30px;
+}
+
+/* FILE BAR */
+.file-bar{
+  background:white;
+  border:1px solid #e2e8f0;
+  padding:14px 18px;
+  border-radius:12px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:25px;
+}
+
+.file-name{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  max-width:75%;
+}
+
+/* CHANGE BUTTON */
+.change-btn{
+  background:#eef2ff;
+  border:none;
+  padding:6px 16px;
+  border-radius:8px;
+  color:#4f46e5;
+  font-weight:600;
+  cursor:pointer;
+  transition:.2s;
+}
+
+.change-btn:hover{
+  background:#e0e7ff;
+}
+
+/* INPUTS */
+.input-row{
+  display:flex;
+  gap:15px;
+  margin-bottom:25px;
+}
+
+.input-row input{
+  flex:1;
+  padding:15px;
+  border-radius:12px;
+  border:1px solid #e2e8f0;
+  font-size:15px;
+}
+
+.input-row input:focus{
+  outline:none;
+  border-color:#4f46e5;
+}
+
+/* VERIFY BUTTON */
+.verify-main-btn{
+  display:block;
+  margin:0 auto;
+  padding:14px 34px;
+  border:none;
+  border-radius:12px;
+  background:#4f46e5;
+  color:white;
+  font-size:16px;
+  font-weight:600;
+  cursor:pointer;
+  transition:.25s;
+  box-shadow:0 8px 20px rgba(79,70,229,0.25);
+}
+
+.verify-main-btn:hover{
+  background:#4338ca;
+  transform:translateY(-2px);
+}
+
+/* RESULT CARD */
+.result-card{
+  margin-top:40px;
+  width:720px;
+  background:white;
+  padding:25px;
+  border-radius:16px;
+  box-shadow:0 10px 25px rgba(0,0,0,.06);
+}
+
+.result-details{
+  margin-top:15px;
+}
+
+/* STATUS */
+.status{
+  display:inline-block;
+  padding:6px 14px;
+  border-radius:20px;
+  font-weight:600;
+  margin-bottom:10px;
+}
+
+.valid{
+  background:#dcfce7;
+  color:#166534;
+}
+
+.invalid{
+  background:#fee2e2;
+  color:#991b1b;
+}
+
+.revoked{
+  background:#fef3c7;
+  color:#92400e;
+}

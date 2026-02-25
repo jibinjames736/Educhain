@@ -1,19 +1,20 @@
 import "../styles/HomePage.css";
 import { useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { signInAnonymously } from "firebase/auth";
 import { db, auth } from "../firebase";
 
 const HomePage = () => {
   const navigate = useNavigate();
+
   const [wallet, setWallet] = useState("");
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
 
-  /* ===============================
-     CONNECT WALLET + FIREBASE LOGIN
-  =============================== */
+  const fileInputRef = useRef(null);
+
+  /* ================= CONNECT WALLET ================= */
   const connectWalletAndRoute = async () => {
     if (!window.ethereum) {
       alert("Please install MetaMask");
@@ -26,15 +27,10 @@ const HomePage = () => {
     try {
       localStorage.removeItem("userData");
 
-      // ✅ Force MetaMask popup
-      try {
-        await window.ethereum.request({
-          method: "wallet_requestPermissions",
-          params: [{ eth_accounts: {} }],
-        });
-      } catch {
-        console.log("Permission cancelled");
-      }
+      await window.ethereum.request({
+        method: "wallet_requestPermissions",
+        params: [{ eth_accounts: {} }],
+      });
 
       const accounts = await window.ethereum.request({
         method: "eth_requestAccounts",
@@ -45,7 +41,6 @@ const HomePage = () => {
       localStorage.setItem("wallet", walletAddress);
       setWallet(walletAddress);
 
-      /* ✅ Firebase Anonymous Login */
       await signInAnonymously(auth);
 
       const snap = await getDoc(doc(db, "users", walletAddress));
@@ -66,12 +61,7 @@ const HomePage = () => {
 
     } catch (err) {
       console.error(err);
-
-      if (err.code === 4001)
-        alert("Wallet connection cancelled");
-      else
-        alert("Failed to connect wallet");
-
+      alert("Wallet connection failed");
     } finally {
       setIsConnecting(false);
     }
@@ -137,10 +127,25 @@ const HomePage = () => {
       ? `${address.slice(0, 6)}...${address.slice(-4)}`
       : "";
 
+  // Handle file selection and navigation
+  const handleUploadClick = () => {
+    fileInputRef.current.click();
+  };
+
+  const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      // Navigate to verify page with the file
+      navigate('/verify', { state: { file } });
+      // Close the modal
+      setShowVerifyModal(false);
+    }
+  };
+
   return (
     <div className="page">
 
-      {/* ================= NAVBAR ================= */}
+      {/* NAVBAR */}
       <header className="topbar">
         <div className="brand">CertVerify</div>
 
@@ -166,7 +171,7 @@ const HomePage = () => {
         </div>
       </header>
 
-      {/* ================= HERO ================= */}
+      {/* HERO */}
       <section className="hero">
         <h1>
           Immutable Trust for <br />
@@ -174,8 +179,8 @@ const HomePage = () => {
         </h1>
 
         <p>
-          Instantly verify the authenticity of certificates
-          using decentralized ledger technology.
+          Instantly verify certificate authenticity
+          using blockchain technology.
         </p>
 
         <div className="verify-row">
@@ -188,34 +193,28 @@ const HomePage = () => {
         </div>
       </section>
 
-      {/* ================= FEATURES RESTORED ================= */}
+      {/* FEATURES */}
       <section className="features">
         <div className="feature-card">
           <div className="icon">🔍</div>
           <h3>Instant Verification</h3>
-          <p>
-            Verify certificates instantly against blockchain.
-          </p>
+          <p>Verify certificates instantly.</p>
         </div>
 
         <div className="feature-card">
           <div className="icon">🔒</div>
           <h3>Tamper-Proof Storage</h3>
-          <p>
-            Certificates stored securely on decentralized networks.
-          </p>
+          <p>Secure decentralized storage.</p>
         </div>
 
         <div className="feature-card">
           <div className="icon">🔗</div>
           <h3>Easy Sharing</h3>
-          <p>
-            Share credentials directly with employers.
-          </p>
+          <p>Share credentials securely.</p>
         </div>
       </section>
 
-      {/* ================= FOOTER RESTORED ================= */}
+      {/* FOOTER */}
       <footer className="footer">
         <p>Supported Blockchains:</p>
         <div className="chains">
@@ -223,31 +222,28 @@ const HomePage = () => {
         </div>
       </footer>
 
-      {/* ================= VERIFY MODAL ================= */}
+      {/* VERIFY MODAL */}
       {showVerifyModal && (
         <div className="modal-overlay">
           <div className="modal">
             <h2>Verify Certificate</h2>
 
+            <p>
+              Upload your certificate to verify
+              authenticity on blockchain.
+            </p>
+
             <div className="modal-actions">
               <button
-                onClick={() =>
-                  navigate("/verify?mode=upload")
-                }
+                className="upload-cert-btn"
+                onClick={handleUploadClick}
               >
-                Upload Certificate File
-              </button>
-
-              <button
-                onClick={() =>
-                  navigate("/verify?mode=qr")
-                }
-              >
-                Scan QR Code
+                Upload Certificate
               </button>
             </div>
 
             <button
+              className="modal-close"
               onClick={() =>
                 setShowVerifyModal(false)
               }
@@ -257,6 +253,15 @@ const HomePage = () => {
           </div>
         </div>
       )}
+
+      {/* Hidden file input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+        accept=".pdf,.png,.jpg,.jpeg"
+      />
     </div>
   );
 };

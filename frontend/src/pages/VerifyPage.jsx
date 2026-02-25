@@ -1,19 +1,159 @@
-const VerifyPage = () => {
-  return (
-    <div style={{ color: "white", textAlign: "center", marginTop: "50px" }}>
-      <h2>Verify Certificate</h2>
-      <p>
-        Upload a certificate file or paste a verification link to check
-        authenticity.
-      </p>
+import { useState, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
+import "../styles/VerifyPage.css";
 
-      <div style={{ marginTop: "30px" }}>
-        <input type="file" />
-        <br /><br />
-        <button>Verify</button>
+export default function VerifyPage() {
+
+  const location = useLocation();
+  const fileInputRef = useRef(null);
+
+  const [file, setFile] = useState(null);
+  const [fileName, setFileName] = useState("");
+  const [certId, setCertId] = useState("");
+  const [universityId, setUniversityId] = useState("");
+  const [results, setResults] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  /* Load uploaded file from previous page */
+  useEffect(() => {
+    if (location.state?.file) {
+      const passedFile = location.state.file;
+      setFile(passedFile);
+      setFileName(passedFile.name);
+    }
+  }, [location.state]);
+
+  /* Replace selected file */
+  const handleFileChange = (e) => {
+    const selected = e.target.files[0];
+    if (!selected) return;
+
+    setFile(selected);
+    setFileName(selected.name);
+    setResults(null);
+  };
+
+  const handleVerify = async () => {
+
+    if (!file || !certId || !universityId)
+      return alert("Fill all fields");
+
+    setLoading(true);
+
+    const formData = new FormData();
+    formData.append("certificates", file);
+    formData.append("certId", certId);
+    formData.append("universityId", universityId);
+
+    const res = await fetch(
+      `${import.meta.env.VITE_BACKEND_URL}/api/verify-multiple`,
+      { method: "POST", body: formData }
+    );
+
+    const data = await res.json();
+    setResults(data.results);
+    setLoading(false);
+  };
+
+  const getStatus = (r) => {
+    if (!r.success) return "invalid";
+    if (r.onChain.revoked) return "revoked";
+    if (r.verification.hashMatch && r.verification.signatureValid)
+      return "valid";
+    return "invalid";
+  };
+
+  return (
+    <div className="verify-page">
+
+      {/* HERO */}
+      <div className="verify-hero">
+
+        <h1>Verify Certificate</h1>
+        <p>Instant blockchain certificate authentication.</p>
+
+        {/* FILE BAR */}
+        <div className="file-bar">
+
+          <span className="file-name">
+            {fileName || "No file selected"}
+          </span>
+
+          <button
+            className="change-btn"
+            onClick={() => fileInputRef.current.click()}
+          >
+            Change
+          </button>
+
+          {/* Hidden input */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            style={{ display: "none" }}
+            accept=".pdf"
+            onChange={handleFileChange}
+          />
+
+        </div>
+
+        {/* INPUTS */}
+        <div className="input-row">
+
+          <input
+            placeholder="Certificate ID"
+            value={certId}
+            onChange={(e)=>setCertId(e.target.value)}
+          />
+
+          <input
+            placeholder="University ID"
+            value={universityId}
+            onChange={(e)=>setUniversityId(e.target.value)}
+          />
+
+        </div>
+
+        {/* VERIFY BUTTON */}
+        <button
+          className="verify-main-btn"
+          onClick={handleVerify}
+        >
+          {loading ? "Verifying..." : "Verify Certificate"}
+        </button>
+
       </div>
+
+      {/* RESULTS */}
+      {results && results.map((r,i)=>(
+        <div key={i} className="result-card">
+
+          <div className={`status ${getStatus(r)}`}>
+            {getStatus(r).toUpperCase()}
+          </div>
+
+          <h3>{r.fileName}</h3>
+
+          {r.success && (
+            <div className="result-details">
+              <p>Hash Match: {r.verification.hashMatch ? "✅" : "❌"}</p>
+              <p>Signature Valid: {r.verification.signatureValid ? "✅" : "❌"}</p>
+              <p>Revoked: {r.onChain.revoked ? "Yes" : "No"}</p>
+
+              {r.university && (
+                <>
+                  <hr/>
+                  <b>{r.university.name}</b>
+                  <p>{r.university.email}</p>
+                  <p>{r.university.address}</p>
+                </>
+              )}
+            </div>
+          )}
+
+        </div>
+      ))}
+
     </div>
   );
-};
-
-export default VerifyPage;
+}
