@@ -13,7 +13,7 @@ async function issueCertificate(certId, ipfsCID, pdfHashHex, signatureHex, issue
       pdfHashHex,      // bytes32 as hex string with 0x
       signatureHex,     // bytes as hex string with 0x
       issuerAddress,
-      { gasLimit: 300000 } // adjust as needed
+      { gasLimit: 300000 } 
     );
     const receipt = await tx.wait();
     console.log(`Certificate issued, tx hash: ${receipt.transactionHash}`);
@@ -24,7 +24,7 @@ async function issueCertificate(certId, ipfsCID, pdfHashHex, signatureHex, issue
   }
 }
 
-// Optional: other functions like revoke, getCertificate for internal use
+
 async function getCertificate(certId) {
   return await contract.getCertificate(certId);
 }

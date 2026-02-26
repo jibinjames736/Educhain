@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.18;
 
-import "@openzeppelin/contracts@4.9.0/utils/cryptography/ECDSA.sol"; // Keep if used elsewhere (not in this snippet, but harmless)
+
 
 /**
- * @title CertificateIssuer
- * @dev Stores certificate records with on-chain Bloom filter and Merkle root support.
+  CertificateIssuer
+  Stores certificate records with on-chain Bloom filter and Merkle root support.
  */
 contract CertificateIssuer {
     struct Certificate {
@@ -20,7 +20,7 @@ contract CertificateIssuer {
     mapping(string => Certificate) public certificates;
     string[] public certificateIds; // Optional: list of all certificate IDs
 
-    // ---------- Bloom Filter (probabilistic existence check) ----------
+    //  Bloom Filter (probabilistic existence check) 
     uint256 private bloomFilter; // 256-bit filter
     uint8 private constant BLOOM_K = 3; // number of hash functions
     // Salts for each hash function - can be any distinct values
@@ -28,7 +28,7 @@ contract CertificateIssuer {
     uint256 private constant SALT1 = 0x1f3d;
     uint256 private constant SALT2 = 0x4a9e;
 
-    // ---------- Merkle Tree (batch roots) ----------
+    //Merkle Tree (batch roots) 
     mapping(bytes32 => bytes32) public batchMerkleRoots;   // batchId => root hash
     mapping(bytes32 => address) public batchIssuer;       // batchId => issuer
 
@@ -37,7 +37,7 @@ contract CertificateIssuer {
     event CertificateRevoked(string indexed certId);
     event BatchRootSet(bytes32 indexed batchId, address indexed issuer, bytes32 merkleRoot);
 
-    // ---------- Bloom Filter Functions ----------
+    // Bloom Filter Functions 
     function _addToBloomFilter(string memory _certId) private {
         uint256 index0 = uint256(keccak256(abi.encodePacked(SALT0, _certId))) % 256;
         uint256 index1 = uint256(keccak256(abi.encodePacked(SALT1, _certId))) % 256;
@@ -46,8 +46,8 @@ contract CertificateIssuer {
     }
 
     /**
-     * @dev Quickly checks if a certificate ID *might* have been issued.
-     *      False positives are possible, false negatives are impossible.
+      Quickly checks if a certificate ID *might* have been issued.
+           False positives are possible, false negatives are impossible.
      */
     function possiblyExists(string calldata _certId) external view returns (bool) {
         uint256 index0 = uint256(keccak256(abi.encodePacked(SALT0, _certId))) % 256;
@@ -58,9 +58,9 @@ contract CertificateIssuer {
                (bloomFilter & (1 << index2)) != 0;
     }
 
-    // ---------- Core Certificate Functions ----------
+    // Core Certificate Functions 
     /**
-     * @dev Issues a new certificate. Only called by the backend (or staff) after PDF generation.
+     *  Issues a new certificate. Only called by the backend (or staff) after PDF generation.
      */
     function issueCertificate(
         string calldata _certId,
@@ -87,7 +87,7 @@ contract CertificateIssuer {
     }
 
     /**
-     * @dev Revokes a certificate. Only the original issuer can revoke.
+     * Revokes a certificate. Only the original issuer can revoke.
      */
     function revokeCertificate(string calldata _certId) external {
         Certificate storage cert = certificates[_certId];
@@ -99,7 +99,7 @@ contract CertificateIssuer {
     }
 
     /**
-     * @dev Returns all details of a certificate.
+     *  Returns all details of a certificate.
      */
     function getCertificate(string calldata _certId) external view returns (
         string memory ipfsCID,
@@ -112,10 +112,10 @@ contract CertificateIssuer {
         return (cert.ipfsCID, cert.pdfHash, cert.signature, cert.issuer, cert.revoked);
     }
 
-    // ---------- Merkle Tree (Batch) Functions ----------
+    
     /**
-     * @dev Sets the Merkle root for a batch of certificates (e.g., all certificates issued in a day).
-     *      The batch issuer (msg.sender) is recorded.
+      Sets the Merkle root for a batch of certificates (e.g., all certificates issued in a day).
+           The batch issuer (msg.sender) is recorded.
      */
     function setBatchRoot(bytes32 _batchId, bytes32 _merkleRoot) external {
         require(batchMerkleRoots[_batchId] == bytes32(0), "Root set");
@@ -125,11 +125,11 @@ contract CertificateIssuer {
     }
 
     /**
-     * @dev Verifies that a given leaf (hash of a certificate) is part of a batch.
-     * @param _batchId The identifier of the batch.
-     * @param _leaf The leaf hash (computed off-chain as keccak256(abi.encodePacked(certId, ipfsCID, pdfHash, issuer)))
-     * @param _proof The Merkle proof (array of sibling hashes) leading to the root.
-     * @return True if the proof is valid.
+      Verifies that a given leaf (hash of a certificate) is part of a batch.
+     _batchId The identifier of the batch.
+     _leaf The leaf hash (computed off-chain as keccak256(abi.encodePacked(certId, ipfsCID, pdfHash, issuer)))
+     _proof The Merkle proof (array of sibling hashes) leading to the root.
+      @return True if the proof is valid.
      */
     function verifyCertificateInBatch(
         bytes32 _batchId,
@@ -152,7 +152,7 @@ contract CertificateIssuer {
     }
 
     /**
-     * @dev Helper to compute the leaf hash for a certificate (must match off-chain calculation).
+     Helper to compute the leaf hash for a certificate 
      */
     function computeCertificateLeaf(
         string calldata _certId,

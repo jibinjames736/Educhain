@@ -2,11 +2,11 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../styles/Studentdashboard.css";
 
-// Import tab components from the same folder
+// Import tab components
 import ViewCertificates from "./ViewCertificates";
-import SharedCertificates from "./SharedCertificates";
-import VerificationActivity from "./VerificationActivity";
-import WalletSecurity from "./WalletSecurity";
+// import SharedCertificates from "./SharedCertificates";
+// import VerificationActivity from "./VerificationActivity";
+// import WalletSecurity from "./WalletSecurity";
 import Profile from "./Profile";
 
 const Studentdashboard = () => {
@@ -32,7 +32,10 @@ const Studentdashboard = () => {
     if (!window.ethereum) return;
 
     const handleAccountsChanged = (accounts) => {
-      if (accounts.length === 0 || accounts[0] !== localStorage.getItem("wallet")) {
+      if (
+        accounts.length === 0 ||
+        accounts[0] !== localStorage.getItem("wallet")
+      ) {
         localStorage.clear();
         navigate("/", { replace: true });
       }
@@ -41,7 +44,10 @@ const Studentdashboard = () => {
     window.ethereum.on("accountsChanged", handleAccountsChanged);
 
     return () => {
-      window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
+      window.ethereum.removeListener(
+        "accountsChanged",
+        handleAccountsChanged
+      );
     };
   }, [navigate]);
 
@@ -58,7 +64,7 @@ const Studentdashboard = () => {
     setTimeout(() => window.location.reload(), 50);
   };
 
-  // Render the active tab component with studentProfile as prop
+  // Render active tab
   const renderTab = () => {
     if (!studentProfile) {
       return <div className="placeholder">Loading profile...</div>;
@@ -67,14 +73,21 @@ const Studentdashboard = () => {
     switch (activeTab) {
       case "certificates":
         return <ViewCertificates studentProfile={studentProfile} />;
+
+      /*
       case "shared":
         return <SharedCertificates studentProfile={studentProfile} />;
+
       case "activity":
         return <VerificationActivity studentProfile={studentProfile} />;
+
       case "security":
         return <WalletSecurity studentProfile={studentProfile} />;
+      */
+
       case "profile":
         return <Profile studentProfile={studentProfile} />;
+
       default:
         return <ViewCertificates studentProfile={studentProfile} />;
     }
@@ -84,6 +97,7 @@ const Studentdashboard = () => {
     <div className="dashboard">
       {/* SIDEBAR */}
       <aside className="sidebar">
+
         {/* PROFILE */}
         <div style={{ marginBottom: "28px" }}>
           <div
@@ -106,6 +120,7 @@ const Studentdashboard = () => {
           <div style={{ fontWeight: "600" }}>
             {studentProfile?.name || "Student"}
           </div>
+
           <div style={{ fontSize: "0.75rem", opacity: 0.7 }}>
             Student • {studentProfile?.universityName}
           </div>
@@ -120,6 +135,7 @@ const Studentdashboard = () => {
             My Certificates
           </button>
 
+          {/*
           <button
             className={activeTab === "shared" ? "active" : ""}
             onClick={() => setActiveTab("shared")}
@@ -140,6 +156,7 @@ const Studentdashboard = () => {
           >
             Wallet & Security
           </button>
+          */}
 
           <button
             className={activeTab === "profile" ? "active" : ""}

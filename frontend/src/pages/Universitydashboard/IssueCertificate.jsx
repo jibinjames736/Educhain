@@ -188,7 +188,7 @@ const IssueCertificate = ({ university }) => {
         }
       }
 
-      // ---- STEP 7: STORE CERTIFICATE DATA IN FIRESTORE ----
+      //  STEP 7: STORE CERTIFICATE DATA IN FIRESTORE 
       const certDocRef = doc(db, "certificates", form.certId);
       await setDoc(certDocRef, {
         studentId: form.studentId,
@@ -220,7 +220,7 @@ const IssueCertificate = ({ university }) => {
     }
   };
 
-  // ========== PREVIEW PDF DOWNLOAD ==========
+  //  PREVIEW PDF DOWNLOAD
   const generatePDF = async () => {
     const element = document.getElementById("certificate");
     await new Promise(resolve => setTimeout(resolve, 300));

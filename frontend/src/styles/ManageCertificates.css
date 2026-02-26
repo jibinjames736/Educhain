@@ -108,7 +108,7 @@ td {
   color: #991b1b;
   border: none;
   padding: 6px 16px;
-  border-radius: 999px; /* same pill shape as status */
+  border-radius: 999px; 
   font-size: 0.75rem;
   font-weight: 700;
   cursor: pointer;

@@ -27,21 +27,21 @@ const Overview = () => {
           return;
         }
 
-        const registrationId = userData.registrationId;
-        if (!registrationId) {
-          setError('University registration ID not found');
+        const universityName = userData.universityName;
+        if (!universityName) {
+          setError('University name not found');
           setLoading(false);
           return;
         }
 
-        console.log('Using registrationId:', registrationId);
+        console.log('Using universityName:', universityName);
 
         const certificatesRef = collection(db, 'certificates');
-        // Query by registrationId (field name must match exactly)
-        const q = query(certificatesRef, where('registrationId', '==', registrationId));
+        // Query by universityName (field name must match exactly)
+        const q = query(certificatesRef, where('universityName', '==', universityName));
         const querySnapshot = await getDocs(q);
 
-        console.log(`Found ${querySnapshot.size} certificates with registrationId = ${registrationId}`);
+        console.log(`Found ${querySnapshot.size} certificates with universityName = ${universityName}`);
         setCertificateCount(querySnapshot.size);
         setLoading(false);
       } catch (err) {

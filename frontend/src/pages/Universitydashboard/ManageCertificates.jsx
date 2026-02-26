@@ -18,7 +18,7 @@ const ManageCertificates = ({ university }) => {
   // RPC URL from environment or fallback
   const rpcUrl = import.meta.env.VITE_RPC_URL || "https://sepolia-rollup.arbitrum.io/rpc";
 
-  // Determine the issuer address (keep original case – used for filtering)
+  // Determine the issuer address 
   useEffect(() => {
     const getIssuer = async () => {
       let address = null;

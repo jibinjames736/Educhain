@@ -29,13 +29,13 @@ const SignupPage = () => {
     email: "",
   });
 
-  /* ================= EMAIL VALIDATION ================= */
+  /*  EMAIL VALIDATION */
   const isValidEmail = (email) => {
     if (!email) return true;
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
-  /* ================= CONNECT WALLET ================= */
+  /*  CONNECT WALLET  */
   const connectWallet = async () => {
 
     if (!window.ethereum) {
@@ -71,7 +71,7 @@ const SignupPage = () => {
     }
   };
 
-  /* ================= WALLET LISTENER ================= */
+  /*WALLET LISTENER */
   useEffect(() => {
 
     const savedWallet = localStorage.getItem("wallet");
@@ -103,7 +103,7 @@ const SignupPage = () => {
 
   }, []);
 
-  /* ================= FORM CHANGE ================= */
+  /* FORM CHANGE */
   const handleChange = (e) => {
     setFormData({
       ...formData,
@@ -111,7 +111,7 @@ const SignupPage = () => {
     });
   };
 
-  /* ================= SIGNUP ================= */
+  /*  SIGNUP  */
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -154,7 +154,7 @@ const SignupPage = () => {
         return;
       }
 
-      /* ========= EMAIL UNIQUE ========= */
+      /*  EMAIL UNIQUE */
       if (formData.email) {
 
         const emailQuery = query(
@@ -170,7 +170,7 @@ const SignupPage = () => {
         }
       }
 
-      /* ========= STUDENT ID UNIQUE ========= */
+      /* STUDENT ID UNIQUE  */
       if (role === "STUDENT") {
 
         const studentQuery = query(
@@ -186,7 +186,7 @@ const SignupPage = () => {
         }
       }
 
-      /* ========= ACCREDITATION UNIQUE ========= */
+      /* ACCREDITATION UNIQUE*/
       if (role === "UNIVERSITY") {
 
         const regQuery = query(
@@ -202,7 +202,7 @@ const SignupPage = () => {
         }
       }
 
-      /* ========= CREATE USER ========= */
+      /*  CREATE USER  */
       const payload = {
         wallet: walletAddress,
         role,
@@ -241,7 +241,7 @@ const SignupPage = () => {
     }
   };
 
-  /* ================= UI ================= */
+  /*  UI  */
   return (
     <div className="signup-page">
       <div className="signup-card">

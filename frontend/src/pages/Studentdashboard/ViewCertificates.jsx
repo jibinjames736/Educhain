@@ -153,7 +153,7 @@ const ViewCertificates = ({ studentProfile }) => {
         encryptedArrayBuffer
       );
 
-      // ----- VERIFICATION: compute hash and compare with stored pdfHashHex if available -----
+      // VERIFICATION: compute hash and compare with stored pdfHashHex if available 
       const decryptedHash = await computeHash(decrypted);
       const decryptedHashHex = '0x' + Array.from(decryptedHash).map(b => b.toString(16).padStart(2, '0')).join('');
       console.log('Decrypted hash:', decryptedHashHex);
@@ -170,7 +170,7 @@ const ViewCertificates = ({ studentProfile }) => {
         console.warn('No stored hash found for this certificate; skipping hash verification.');
       }
 
-      // ----- PDF HEADER CHECK -----
+      // PDF HEADER CHECK 
       const decryptedBytes = new Uint8Array(decrypted);
       const header = new TextDecoder().decode(decryptedBytes.slice(0, 4));
       console.log('File header (first 4 bytes):', header);
@@ -182,7 +182,7 @@ const ViewCertificates = ({ studentProfile }) => {
         console.log('✅ PDF header detected – file appears to be a valid PDF.');
       }
 
-      // ----- Create and trigger download -----
+      //  Create and trigger download 
       const decryptedBlob = new Blob([decrypted], { type: "application/pdf" });
       const url = URL.createObjectURL(decryptedBlob);
       const link = document.createElement("a");

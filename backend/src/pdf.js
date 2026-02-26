@@ -19,7 +19,6 @@ async function generatePDF(formData) {
     const year = today.getFullYear();
     const dateStr = `${day}/${month}/${year}`;
 
-    // Certificate layout (matching your expected screenshot)
     doc.fontSize(26).font('Helvetica-Bold').text(universityName, { align: 'center' });
     doc.moveDown(0.5);
     doc.fontSize(22).font('Helvetica').text('Blockchain Certificate', { align: 'center' });
@@ -38,10 +37,7 @@ async function generatePDF(formData) {
     doc.text(`Date Issued: ${dateStr}`, { align: 'left', continued: true });
     doc.text(`Certificate ID: ${formData.certId}`, { align: 'right' });
 
-    // Optional: QR code can be added here if you generate it
-    // if (formData.qrCodeBuffer) {
-    //   doc.image(formData.qrCodeBuffer, 450, 400, { width: 100 });
-    // }
+  
 
     doc.end();
   });

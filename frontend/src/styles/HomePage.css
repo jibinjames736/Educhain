@@ -60,7 +60,7 @@
   margin-top: 32px;
 }
 
-/* ORIGINAL VERIFY BUTTON (UNCHANGED) */
+
 .verify-btn {
   padding: 12px 26px;
   background: #3b82f6;
@@ -120,7 +120,7 @@
   margin-bottom: 25px;
 }
 
-/* UPLOAD BUTTON — SAME SIZE AS VERIFY */
+/* UPLOAD BUTTON  */
 .upload-cert-btn {
   width: 100%;
   padding: 12px 26px;

@@ -7,10 +7,10 @@ const fileUpload = require('express-fileupload');
 const { ethers } = require('ethers');   // ethers v5
 console.log('Ethers version:', ethers.version);
 
-// Your custom modules
+
 const cryptoLib = require('./crypto');
 const ipfs = require('./ipfs');
-const contractABI = require('./contractABI.json'); // must include 'possiblyExists'
+const contractABI = require('./contractABI.json'); 
 
 // Firebase Admin
 let db = null;
@@ -42,7 +42,7 @@ setInterval(() => {
   }
 }, 60000);
 
-// ---------- Helper: Verify a single certificate buffer ----------
+//  Helper: Verify a single certificate buffer 
 async function verifyCertificateBuffer(fileBuffer, fileName, certId, universityId) {
   try {
     // 1. Compute SHA‑256 hash of the file
@@ -128,7 +128,7 @@ async function verifyCertificateBuffer(fileBuffer, fileName, certId, universityI
   }
 }
 
-// ---------- Step 1: Prepare ----------
+//  Step 1: Prepare 
 app.post('/api/prepare', async (req, res) => {
   try {
     const formData = req.body;
@@ -148,7 +148,7 @@ app.post('/api/prepare', async (req, res) => {
   }
 });
 
-// ---------- Step 2: Finalize ----------
+//  Step 2: Finalize 
 app.post('/api/finalize', async (req, res) => {
   try {
     const { tempId, signature, issuer } = req.body;
@@ -188,7 +188,7 @@ app.post('/api/finalize', async (req, res) => {
   }
 });
 
-// ---------- Single File Verification ----------
+//  Single File Verification 
 app.post('/api/verify', async (req, res) => {
   try {
     if (!req.files || !req.files.certificate) {
@@ -212,7 +212,7 @@ app.post('/api/verify', async (req, res) => {
   }
 });
 
-// ---------- Multiple File Verification ----------
+//  Multiple File Verification
 app.post('/api/verify-multiple', async (req, res) => {
   try {
     if (!req.files || !req.files.certificates) {
@@ -239,7 +239,7 @@ app.post('/api/verify-multiple', async (req, res) => {
   }
 });
 
-// ---------- QR/ID Verification ----------
+//  QR/ID Verification 
 app.post('/api/verify-qr', async (req, res) => {
   try {
     const { certId, universityId } = req.body;

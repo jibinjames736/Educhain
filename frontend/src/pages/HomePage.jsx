@@ -14,7 +14,7 @@ const HomePage = () => {
 
   const fileInputRef = useRef(null);
 
-  /* ================= CONNECT WALLET ================= */
+  /*  CONNECT WALLET */
   const connectWalletAndRoute = async () => {
     if (!window.ethereum) {
       alert("Please install MetaMask");

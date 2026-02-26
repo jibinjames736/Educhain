@@ -14,7 +14,7 @@ const Universitydashboard = () => {
   const [activeTab, setActiveTab] = useState("OVERVIEW");
   const [profile, setProfile] = useState(null);
 
-  /* ================= SESSION CHECK ================= */
+  /* SESSION CHECK  */
   useEffect(() => {
 
     const storedUser = localStorage.getItem("userData");
@@ -29,20 +29,20 @@ const Universitydashboard = () => {
 
   }, [navigate]);
 
-  /* ================= LOGOUT ================= */
+  /* LOGOUT */
   const handleLogout = () => {
     localStorage.clear();
     navigate("/", { replace: true });
   };
 
-  /* ================= TAB BUTTON STYLE ================= */
+  /*  TAB BUTTON STYLE */
   const isActive = (tab) =>
     activeTab === tab ? "active" : "";
 
   return (
     <div className="dashboard">
 
-      {/* ========= SIDEBAR ========= */}
+      {/* SIDEBAR */}
       <aside className="sidebar">
 
         {/* UNIVERSITY NAME */}
@@ -97,7 +97,7 @@ const Universitydashboard = () => {
 
       </aside>
 
-      {/* ========= MAIN CONTENT ========= */}
+      {/* MAIN CONTENT  */}
       <main className="content">
 
         {activeTab === "OVERVIEW" && <Overview />}
