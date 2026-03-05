@@ -1,11 +1,20 @@
 .page {
   min-height: 100vh;
-  background: #050b16;
+
+  background:
+  linear-gradient(rgba(5,11,22,0.75), rgba(5,11,22,0.9)),
+  url("../assets/horizon-bg.jpg");
+
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+
   color: white;
   font-family: Inter, Arial, sans-serif;
 }
 
 /* NAVBAR */
+
 .topbar {
   display: flex;
   justify-content: space-between;
@@ -40,8 +49,8 @@
   border-radius: 6px;
   cursor: pointer;
 }
-
 /* HERO */
+
 .hero {
   text-align: center;
   padding: 90px 20px 60px;
@@ -60,6 +69,7 @@
   margin-top: 32px;
 }
 
+/* VERIFY BUTTON (UNCHANGED) */
 
 .verify-btn {
   padding: 12px 26px;
@@ -72,6 +82,7 @@
 }
 
 /* FEATURES */
+
 .features {
   display: grid;
   grid-template-columns: repeat(3,1fr);
@@ -80,21 +91,29 @@
 }
 
 .feature-card {
-  background: rgba(255,255,255,0.03);
+
+  background: rgba(255,255,255,0.04);
+
+  backdrop-filter: blur(10px);
+
   border: 1px solid rgba(255,255,255,0.12);
+
   border-radius: 16px;
+
   padding: 30px;
+
   text-align: center;
 }
 
 /* FOOTER */
+
 .footer {
   text-align: center;
   padding-bottom: 40px;
   opacity: 0.7;
 }
 
-/* ================= MODAL ================= */
+/* MODAL */
 
 .modal-overlay {
   position: fixed;
@@ -107,11 +126,17 @@
 }
 
 .modal {
-  background: #0b1220;
+
+  background: rgba(11,18,32,0.9);
+
   border-radius: 18px;
+
   padding: 36px 30px;
+
   width: 400px;
+
   text-align: center;
+
   border: 1px solid rgba(255,255,255,0.08);
 }
 
@@ -120,7 +145,8 @@
   margin-bottom: 25px;
 }
 
-/* UPLOAD BUTTON  */
+/* UPLOAD BUTTON (UNCHANGED) */
+
 .upload-cert-btn {
   width: 100%;
   padding: 12px 26px;
@@ -143,7 +169,8 @@
   transform: scale(0.97);
 }
 
-/* CANCEL */
+/* CANCEL BUTTON */
+
 .modal-close {
   margin-top: 12px;
   background: transparent;

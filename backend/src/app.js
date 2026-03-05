@@ -96,7 +96,7 @@ async function verifyCertificateBuffer(fileBuffer, fileName, certId, universityI
       throw new Error(`No Ethereum address associated with university ${universityId}`);
     }
 
-    // 8. Verify signature (ECDSA) – ethers v5 uses utils.verifyMessage
+    // 8. Verify signature – ethers v5 uses utils.verifyMessage
     let signatureValid = false;
     try {
       const recoveredAddress = ethers.utils.verifyMessage(fileHashHex, signature);

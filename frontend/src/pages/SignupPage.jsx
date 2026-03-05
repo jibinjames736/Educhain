@@ -14,7 +14,6 @@ import { signInAnonymously } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 
 const SignupPage = () => {
-
   const navigate = useNavigate();
 
   const [role, setRole] = useState("STUDENT");
@@ -24,20 +23,29 @@ const SignupPage = () => {
   const [formData, setFormData] = useState({
     name: "",
     studentId: "",
+    universityId: "",
     universityName: "",
     registrationId: "",
     email: "",
   });
 
-  /*  EMAIL VALIDATION */
+  /* SHORTEN WALLET */
+
+  const shortenAddress = (address) => {
+    if (!address) return "";
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
+
+  /* EMAIL VALIDATION */
+
   const isValidEmail = (email) => {
     if (!email) return true;
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
-  /*  CONNECT WALLET  */
-  const connectWallet = async () => {
+  /* CONNECT WALLET */
 
+  const connectWallet = async () => {
     if (!window.ethereum) {
       alert("MetaMask not found");
       return;
@@ -48,7 +56,6 @@ const SignupPage = () => {
     setIsConnecting(true);
 
     try {
-
       await window.ethereum.request({
         method: "wallet_requestPermissions",
         params: [{ eth_accounts: {} }],
@@ -71,16 +78,15 @@ const SignupPage = () => {
     }
   };
 
-  /*WALLET LISTENER */
-  useEffect(() => {
+  /* WALLET LISTENER */
 
+  useEffect(() => {
     const savedWallet = localStorage.getItem("wallet");
     if (savedWallet) setWalletAddress(savedWallet);
 
     if (!window.ethereum) return;
 
     const handleAccountsChanged = (accounts) => {
-
       if (accounts.length === 0) {
         setWalletAddress("");
         localStorage.removeItem("wallet");
@@ -100,10 +106,10 @@ const SignupPage = () => {
         handleAccountsChanged
       );
     };
-
   }, []);
 
   /* FORM CHANGE */
+
   const handleChange = (e) => {
     setFormData({
       ...formData,
@@ -111,7 +117,8 @@ const SignupPage = () => {
     });
   };
 
-  /*  SIGNUP  */
+  /* SIGNUP */
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -126,17 +133,14 @@ const SignupPage = () => {
     }
 
     try {
-
       await signInAnonymously(auth);
 
       const usersRef = collection(db, "users");
 
-      /* ========= WALLET UNIQUE ========= */
       const walletRef = doc(db, "users", walletAddress);
       const walletSnap = await getDoc(walletRef);
 
       if (walletSnap.exists()) {
-
         const existingUser = walletSnap.data();
 
         alert(`Wallet already registered as ${existingUser.role}`);
@@ -154,9 +158,9 @@ const SignupPage = () => {
         return;
       }
 
-      /*  EMAIL UNIQUE */
-      if (formData.email) {
+      /* EMAIL UNIQUE */
 
+      if (formData.email) {
         const emailQuery = query(
           usersRef,
           where("email", "==", formData.email)
@@ -170,9 +174,9 @@ const SignupPage = () => {
         }
       }
 
-      /* STUDENT ID UNIQUE  */
-      if (role === "STUDENT") {
+      /* STUDENT ID UNIQUE */
 
+      if (role === "STUDENT") {
         const studentQuery = query(
           usersRef,
           where("studentId", "==", formData.studentId)
@@ -186,9 +190,9 @@ const SignupPage = () => {
         }
       }
 
-      /* ACCREDITATION UNIQUE*/
-      if (role === "UNIVERSITY") {
+      /* UNIVERSITY REGISTRATION UNIQUE */
 
+      if (role === "UNIVERSITY") {
         const regQuery = query(
           usersRef,
           where("registrationId", "==", formData.registrationId)
@@ -202,7 +206,8 @@ const SignupPage = () => {
         }
       }
 
-      /*  CREATE USER  */
+      /* CREATE USER PAYLOAD */
+
       const payload = {
         wallet: walletAddress,
         role,
@@ -214,6 +219,7 @@ const SignupPage = () => {
       if (role === "STUDENT") {
         payload.name = formData.name;
         payload.studentId = formData.studentId;
+        payload.universityId = formData.universityId;
       }
 
       if (role === "UNIVERSITY") {
@@ -241,14 +247,23 @@ const SignupPage = () => {
     }
   };
 
-  /*  UI  */
   return (
     <div className="signup-page">
-      <div className="signup-card">
 
-        <h2>Sign Up</h2>
+      <div className="signup-container">
+
+        <h2 className="signup-title">
+          Welcome to CertVerify
+        </h2>
+
+        <p className="signup-subtitle">
+          Register to issue and verify blockchain credentials
+        </p>
+
+        {/* ROLE SWITCH */}
 
         <div className="role-toggle">
+
           <button
             type="button"
             className={role === "STUDENT" ? "active" : ""}
@@ -264,19 +279,33 @@ const SignupPage = () => {
           >
             University
           </button>
+
         </div>
 
-        <input value={walletAddress} readOnly placeholder="Wallet Address" />
+        {/* WALLET */}
 
-        <button
-          type="button"
-          className="primary-btn"
-          onClick={connectWallet}
-        >
-          Connect Wallet
-        </button>
+        <div className="wallet-section">
 
-        <form onSubmit={handleSubmit}>
+          <input
+            value={walletAddress ? shortenAddress(walletAddress) : ""}
+            readOnly
+            placeholder="Wallet Address"
+            className="wallet-input"
+          />
+
+          <button
+            type="button"
+            className="wallet-btn"
+            onClick={connectWallet}
+          >
+            Connect Wallet
+          </button>
+
+        </div>
+
+        {/* FORM */}
+
+        <form className="signup-form" onSubmit={handleSubmit}>
 
           {role === "STUDENT" && (
             <>
@@ -290,6 +319,13 @@ const SignupPage = () => {
               <input
                 name="studentId"
                 placeholder="Student ID"
+                required
+                onChange={handleChange}
+              />
+
+              <input
+                name="universityId"
+                placeholder="University ID"
                 required
                 onChange={handleChange}
               />
@@ -317,17 +353,18 @@ const SignupPage = () => {
           <input
             name="email"
             type="email"
-            placeholder="Email"
+            placeholder="Email Address"
             onChange={handleChange}
           />
 
-          <button type="submit" className="primary-btn">
-            Submit
+          <button type="submit" className="signup-submit-btn">
+            Sign Up
           </button>
 
         </form>
 
       </div>
+
     </div>
   );
 };
