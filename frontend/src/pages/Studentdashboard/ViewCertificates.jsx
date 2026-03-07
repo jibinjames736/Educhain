@@ -82,17 +82,13 @@ const ViewCertificates = ({ studentProfile }) => {
     return new Uint8Array(hashBuffer);
   };
 
-  // ----- Decryption function for AES-256-CBC -----
+  // ----- Download & decryption (only local gateways) -----
   const downloadAndDecrypt = async (cert) => {
     setDownloading((prev) => ({ ...prev, [cert.certId]: true }));
     try {
-      // List of gateways (local first, then public)
-      const gateways = [
-        import.meta.env.VITE_IPFS_GATEWAY || 'http://localhost:8080',
-        'https://ipfs.io',
-        'https://cloudflare-ipfs.com',
-        'https://dweb.link',
-      ].filter(Boolean);
+      // Only local gateway ports to try (adjust if your IPFS uses different ports)
+      const localPorts = [8080, 8081];
+      const gateways = localPorts.map(port => `http://localhost:${port}`);
 
       let encryptedBlob = null;
       let lastError = null;
@@ -101,24 +97,29 @@ const ViewCertificates = ({ studentProfile }) => {
         try {
           const url = `${gateway}/ipfs/${cert.ipfsCid}`;
           console.log(`Attempting to fetch from: ${url}`);
-          const response = await fetch(url, {
-            signal: AbortSignal.timeout(10000),
-          });
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          const response = await fetch(url, { signal: controller.signal });
+          clearTimeout(timeoutId);
+
           if (response.ok) {
             encryptedBlob = await response.blob();
-            console.log(`Successfully fetched from ${gateway}`);
+            console.log(`✅ Successfully fetched from ${gateway}`);
             break;
           } else {
             lastError = new Error(`HTTP ${response.status} from ${gateway}`);
+            console.warn(`Gateway ${gateway} returned status ${response.status}`);
           }
         } catch (e) {
           lastError = e;
           console.warn(`Gateway ${gateway} failed:`, e.message);
         }
+        // Brief pause before next attempt
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
 
       if (!encryptedBlob) {
-        throw new Error(`Failed to fetch from any gateway. Last error: ${lastError?.message}`);
+        throw new Error(`Failed to fetch from any local gateway. Last error: ${lastError?.message}`);
       }
 
       console.log('Encrypted blob size:', encryptedBlob.size);
@@ -153,7 +154,7 @@ const ViewCertificates = ({ studentProfile }) => {
         encryptedArrayBuffer
       );
 
-      // VERIFICATION: compute hash and compare with stored pdfHashHex if available 
+      // VERIFICATION: compute hash and compare with stored pdfHashHex if available
       const decryptedHash = await computeHash(decrypted);
       const decryptedHashHex = '0x' + Array.from(decryptedHash).map(b => b.toString(16).padStart(2, '0')).join('');
       console.log('Decrypted hash:', decryptedHashHex);
@@ -170,7 +171,7 @@ const ViewCertificates = ({ studentProfile }) => {
         console.warn('No stored hash found for this certificate; skipping hash verification.');
       }
 
-      // PDF HEADER CHECK 
+      // PDF HEADER CHECK
       const decryptedBytes = new Uint8Array(decrypted);
       const header = new TextDecoder().decode(decryptedBytes.slice(0, 4));
       console.log('File header (first 4 bytes):', header);
@@ -182,7 +183,7 @@ const ViewCertificates = ({ studentProfile }) => {
         console.log('✅ PDF header detected – file appears to be a valid PDF.');
       }
 
-      //  Create and trigger download 
+      // Create and trigger download
       const decryptedBlob = new Blob([decrypted], { type: "application/pdf" });
       const url = URL.createObjectURL(decryptedBlob);
       const link = document.createElement("a");

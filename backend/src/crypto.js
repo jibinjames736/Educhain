@@ -1,27 +1,37 @@
 const crypto = require('crypto');
-const { ethers } = require('ethers');
+const { ethers } = require('ethers'); // ethers v5
 
-// Compute SHA-256 hash of a buffer, returns raw Buffer (32 bytes)
+/**
+ * Computes SHA-256 hash of a buffer.
+ * @param {Buffer} buffer - Input data
+ * @returns {Buffer} 32‑byte raw hash
+ */
 function computeHash(buffer) {
   return crypto.createHash('sha256').update(buffer).digest();
 }
 
-// Encrypt PDF with AES-256-CBC using a random key and IV
-// Returns { key (32 bytes), iv (16 bytes), encryptedData (Buffer) }
+/**
+ * Encrypts a PDF buffer with AES-256-CBC.
+ * @param {Buffer} pdfBuffer - Plain PDF data
+ * @returns {Object} { key, iv, encryptedData }
+ */
 function encryptPDF(pdfBuffer) {
-  const key = crypto.randomBytes(32); // AES-256 key
-  const iv = crypto.randomBytes(16);  // Initialization vector
+  const key = crypto.randomBytes(32);      // AES-256 key
+  const iv = crypto.randomBytes(16);       // Initialization vector
   const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
   const encrypted = Buffer.concat([cipher.update(pdfBuffer), cipher.final()]);
   return { key, iv, encryptedData: encrypted };
 }
 
-// Recover signer address from hash (raw Buffer) and signature (0x-prefixed hex)
+/**
+ * Recovers the signer's Ethereum address from a raw hash and signature.
+ * @param {Buffer} pdfHashRaw - The raw 32‑byte hash that was signed
+ * @param {string} signatureHex - Hex signature (with 0x prefix)
+ * @returns {string} Ethereum address (checksummed)
+ */
 function recoverSigner(pdfHashRaw, signatureHex) {
-  // Convert raw hash to hex string with 0x prefix
-  const messageHashHex = '0x' + pdfHashRaw.toString('hex');
-  // ethers v5 uses ethers.utils.verifyMessage
-  return ethers.utils.verifyMessage(messageHashHex, signatureHex);
+  // Pass the raw buffer directly – ethers v5 will treat it as the original message.
+  return ethers.utils.verifyMessage(pdfHashRaw, signatureHex);
 }
 
 module.exports = { computeHash, encryptPDF, recoverSigner };

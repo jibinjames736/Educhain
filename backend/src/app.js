@@ -7,10 +7,9 @@ const fileUpload = require('express-fileupload');
 const { ethers } = require('ethers');   // ethers v5
 console.log('Ethers version:', ethers.version);
 
-
 const cryptoLib = require('./crypto');
 const ipfs = require('./ipfs');
-const contractABI = require('./contractABI.json'); 
+const contractABI = require('./contractABI.json');
 
 // Firebase Admin
 let db = null;
@@ -21,10 +20,22 @@ try {
     credential: admin.credential.cert(serviceAccount),
   });
   db = admin.firestore();
-  console.log('Firebase Admin initialized');
+  console.log('✅ Firebase Admin initialized');
 } catch (err) {
-  console.warn('Firebase Admin not configured – universityId mapping will be unavailable');
+  console.warn('⚠️ Firebase Admin not configured – universityId mapping will be unavailable');
 }
+
+// IPFS health check at startup
+(async () => {
+  try {
+    const { create } = require('ipfs-http-client');
+    const testClient = create({ url: process.env.IPFS_URL || 'http://127.0.0.1:5001', timeout: 5000 });
+    const version = await testClient.version();
+    console.log('✅ IPFS daemon connected, version:', version.version);
+  } catch (err) {
+    console.warn('⚠️ IPFS daemon not reachable. Uploads will fail:', err.message);
+  }
+})();
 
 const app = express();
 app.use(cors());
@@ -42,10 +53,10 @@ setInterval(() => {
   }
 }, 60000);
 
-//  Helper: Verify a single certificate buffer 
+// Helper: Verify a single certificate buffer
 async function verifyCertificateBuffer(fileBuffer, fileName, certId, universityId) {
   try {
-    // 1. Compute SHA‑256 hash of the file
+    // 1. Compute SHA‑256 hash of the file (raw buffer)
     const fileHash = cryptoLib.computeHash(fileBuffer);
     const fileHashHex = '0x' + fileHash.toString('hex');
 
@@ -96,10 +107,10 @@ async function verifyCertificateBuffer(fileBuffer, fileName, certId, universityI
       throw new Error(`No Ethereum address associated with university ${universityId}`);
     }
 
-    // 8. Verify signature – ethers v5 uses utils.verifyMessage
+    // 8. Verify signature – use raw hash buffer (fileHash) not hex string
     let signatureValid = false;
     try {
-      const recoveredAddress = ethers.utils.verifyMessage(fileHashHex, signature);
+      const recoveredAddress = ethers.utils.verifyMessage(fileHash, signature);
       signatureValid = (recoveredAddress.toLowerCase() === expectedAddress.toLowerCase());
     } catch (err) {
       signatureValid = false;
@@ -128,7 +139,7 @@ async function verifyCertificateBuffer(fileBuffer, fileName, certId, universityI
   }
 }
 
-//  Step 1: Prepare 
+// Step 1: Prepare
 app.post('/api/prepare', async (req, res) => {
   try {
     const formData = req.body;
@@ -148,10 +159,18 @@ app.post('/api/prepare', async (req, res) => {
   }
 });
 
-//  Step 2: Finalize 
+// Step 2: Finalize (with detailed error messages)
 app.post('/api/finalize', async (req, res) => {
   try {
     const { tempId, signature, issuer } = req.body;
+
+    // Validate required fields
+    if (!tempId || !signature || !issuer) {
+      return res.status(400).json({ 
+        error: 'Missing required fields',
+        required: { tempId: !!tempId, signature: !!signature, issuer: !!issuer }
+      });
+    }
 
     const temp = tempStore.get(tempId);
     if (!temp) {
@@ -162,13 +181,33 @@ app.post('/api/finalize', async (req, res) => {
     const { pdfBuffer, formData } = temp;
     const pdfHash = cryptoLib.computeHash(pdfBuffer);
 
-    const recovered = cryptoLib.recoverSigner(pdfHash, signature);
-    if (recovered.toLowerCase() !== issuer.toLowerCase()) {
-      return res.status(400).json({ error: 'Signature does not match issuer' });
+    // Verify signature
+    let recovered;
+    try {
+      recovered = cryptoLib.recoverSigner(pdfHash, signature);
+    } catch (err) {
+      console.error('Signature recovery error:', err);
+      return res.status(400).json({ error: 'Invalid signature format', detail: err.message });
     }
 
+    if (!recovered || recovered.toLowerCase() !== issuer.toLowerCase()) {
+      return res.status(400).json({ 
+        error: 'Signature does not match issuer',
+        expected: issuer,
+        recovered: recovered || 'none'
+      });
+    }
+
+    // Encrypt and upload to IPFS
     const { key, iv, encryptedData } = cryptoLib.encryptPDF(pdfBuffer);
-    const cid = await ipfs.upload(encryptedData);
+    let cid;
+    try {
+      cid = await ipfs.upload(encryptedData);
+    } catch (ipfsErr) {
+      console.error('IPFS upload failed:', ipfsErr);
+      return res.status(500).json({ error: 'IPFS upload failed', detail: ipfsErr.message });
+    }
+
     const keyWithIv = Buffer.concat([key, iv]).toString('base64');
     const verificationUrl = `https://certverify.app/verify/${formData.certId}`;
 
@@ -184,11 +223,11 @@ app.post('/api/finalize', async (req, res) => {
     });
   } catch (error) {
     console.error('Finalize error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal server error', detail: error.message });
   }
 });
 
-//  Single File Verification 
+// Single File Verification
 app.post('/api/verify', async (req, res) => {
   try {
     if (!req.files || !req.files.certificate) {
@@ -212,7 +251,7 @@ app.post('/api/verify', async (req, res) => {
   }
 });
 
-//  Multiple File Verification
+// Multiple File Verification
 app.post('/api/verify-multiple', async (req, res) => {
   try {
     if (!req.files || !req.files.certificates) {
@@ -239,7 +278,7 @@ app.post('/api/verify-multiple', async (req, res) => {
   }
 });
 
-//  QR/ID Verification 
+// QR/ID Verification
 app.post('/api/verify-qr', async (req, res) => {
   try {
     const { certId, universityId } = req.body;
@@ -283,4 +322,4 @@ app.post('/api/verify-qr', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Backend running on port ${PORT}`));
+app.listen(PORT, () => console.log(`✅ Backend running on port ${PORT}`));

@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.18;
 
-
-
 /**
-  CertificateIssuer
-  Stores certificate records with on-chain Bloom filter and Merkle root support.
+ * @title CertificateIssuer
+ * @dev Stores certificates. Only addresses in the verified institutions list can issue.
+ *      The list is maintained by a designated listMaintainer (e.g., a backend account).
  */
 contract CertificateIssuer {
     struct Certificate {
@@ -20,24 +19,58 @@ contract CertificateIssuer {
     mapping(string => Certificate) public certificates;
     string[] public certificateIds; // Optional: list of all certificate IDs
 
-    //  Bloom Filter (probabilistic existence check) 
+    // Bloom Filter
     uint256 private bloomFilter; // 256-bit filter
-    uint8 private constant BLOOM_K = 3; // number of hash functions
-    // Salts for each hash function - can be any distinct values
+    uint8 private constant BLOOM_K = 3;
     uint256 private constant SALT0 = 0x8c7b;
     uint256 private constant SALT1 = 0x1f3d;
     uint256 private constant SALT2 = 0x4a9e;
 
-    //Merkle Tree (batch roots) 
+    // Merkle Tree (batch roots)
     mapping(bytes32 => bytes32) public batchMerkleRoots;   // batchId => root hash
     mapping(bytes32 => address) public batchIssuer;       // batchId => issuer
+
+    // ---------- Verified Institutions ----------
+    address public immutable listMaintainer;  // address authorised to update the verified list
+    mapping(address => bool) public verifiedInstitutions;
 
     // Events
     event CertificateIssued(string indexed certId, address indexed issuer, string ipfsCID, bytes32 pdfHash);
     event CertificateRevoked(string indexed certId);
     event BatchRootSet(bytes32 indexed batchId, address indexed issuer, bytes32 merkleRoot);
+    event InstitutionAdded(address indexed institution);
+    event InstitutionRemoved(address indexed institution);
 
-    // Bloom Filter Functions 
+    modifier onlyMaintainer() {
+        require(msg.sender == listMaintainer, "Not list maintainer");
+        _;
+    }
+
+    modifier onlyVerified() {
+        require(verifiedInstitutions[msg.sender], "Not a verified institution");
+        _;
+    }
+
+    constructor(address _listMaintainer) {
+        require(_listMaintainer != address(0), "Invalid maintainer");
+        listMaintainer = _listMaintainer;
+    }
+
+    // ---------- List Management (only maintainer) ----------
+    function addInstitution(address _institution) external onlyMaintainer {
+        require(_institution != address(0), "Invalid address");
+        require(!verifiedInstitutions[_institution], "Already verified");
+        verifiedInstitutions[_institution] = true;
+        emit InstitutionAdded(_institution);
+    }
+
+    function removeInstitution(address _institution) external onlyMaintainer {
+        require(verifiedInstitutions[_institution], "Not verified");
+        verifiedInstitutions[_institution] = false;
+        emit InstitutionRemoved(_institution);
+    }
+
+    // ---------- Bloom Filter Functions ----------
     function _addToBloomFilter(string memory _certId) private {
         uint256 index0 = uint256(keccak256(abi.encodePacked(SALT0, _certId))) % 256;
         uint256 index1 = uint256(keccak256(abi.encodePacked(SALT1, _certId))) % 256;
@@ -45,10 +78,6 @@ contract CertificateIssuer {
         bloomFilter = bloomFilter | (1 << index0) | (1 << index1) | (1 << index2);
     }
 
-    /**
-      Quickly checks if a certificate ID *might* have been issued.
-           False positives are possible, false negatives are impossible.
-     */
     function possiblyExists(string calldata _certId) external view returns (bool) {
         uint256 index0 = uint256(keccak256(abi.encodePacked(SALT0, _certId))) % 256;
         uint256 index1 = uint256(keccak256(abi.encodePacked(SALT1, _certId))) % 256;
@@ -58,36 +87,38 @@ contract CertificateIssuer {
                (bloomFilter & (1 << index2)) != 0;
     }
 
-    // Core Certificate Functions 
+    // ---------- Core Certificate Functions ----------
     /**
-     *  Issues a new certificate. Only called by the backend (or staff) after PDF generation.
+     * @dev Issues a new certificate. The caller must be a verified institution.
+     * @param _certId Unique identifier for the certificate.
+     * @param _ipfsCID IPFS CID of the encrypted PDF.
+     * @param _pdfHash SHA-256 hash of the raw (unencrypted) PDF.
+     * @param _signature Institution's RSA signature of the hash.
      */
     function issueCertificate(
         string calldata _certId,
         string calldata _ipfsCID,
         bytes32 _pdfHash,
-        bytes calldata _signature,
-        address _issuer
-    ) external {
+        bytes calldata _signature
+    ) external onlyVerified {
         require(bytes(certificates[_certId].ipfsCID).length == 0, "ID exists");
 
         certificates[_certId] = Certificate({
             ipfsCID: _ipfsCID,
             pdfHash: _pdfHash,
             signature: _signature,
-            issuer: _issuer,
+            issuer: msg.sender,
             revoked: false
         });
         certificateIds.push(_certId);
 
-        // Add the certificate ID to the Bloom filter
         _addToBloomFilter(_certId);
 
-        emit CertificateIssued(_certId, _issuer, _ipfsCID, _pdfHash);
+        emit CertificateIssued(_certId, msg.sender, _ipfsCID, _pdfHash);
     }
 
     /**
-     * Revokes a certificate. Only the original issuer can revoke.
+     * @dev Revokes a certificate. Only the original issuer can revoke.
      */
     function revokeCertificate(string calldata _certId) external {
         Certificate storage cert = certificates[_certId];
@@ -99,7 +130,7 @@ contract CertificateIssuer {
     }
 
     /**
-     *  Returns all details of a certificate.
+     * @dev Returns all details of a certificate.
      */
     function getCertificate(string calldata _certId) external view returns (
         string memory ipfsCID,
@@ -112,11 +143,7 @@ contract CertificateIssuer {
         return (cert.ipfsCID, cert.pdfHash, cert.signature, cert.issuer, cert.revoked);
     }
 
-    
-    /**
-      Sets the Merkle root for a batch of certificates (e.g., all certificates issued in a day).
-           The batch issuer (msg.sender) is recorded.
-     */
+    // ---------- Batch Merkle Root Functions ----------
     function setBatchRoot(bytes32 _batchId, bytes32 _merkleRoot) external {
         require(batchMerkleRoots[_batchId] == bytes32(0), "Root set");
         batchMerkleRoots[_batchId] = _merkleRoot;
@@ -124,13 +151,6 @@ contract CertificateIssuer {
         emit BatchRootSet(_batchId, msg.sender, _merkleRoot);
     }
 
-    /**
-      Verifies that a given leaf (hash of a certificate) is part of a batch.
-     _batchId The identifier of the batch.
-     _leaf The leaf hash (computed off-chain as keccak256(abi.encodePacked(certId, ipfsCID, pdfHash, issuer)))
-     _proof The Merkle proof (array of sibling hashes) leading to the root.
-      @return True if the proof is valid.
-     */
     function verifyCertificateInBatch(
         bytes32 _batchId,
         bytes32 _leaf,
@@ -151,9 +171,6 @@ contract CertificateIssuer {
         return computed == root;
     }
 
-    /**
-     Helper to compute the leaf hash for a certificate 
-     */
     function computeCertificateLeaf(
         string calldata _certId,
         string calldata _ipfsCID,
@@ -162,4 +179,4 @@ contract CertificateIssuer {
     ) external pure returns (bytes32) {
         return keccak256(abi.encodePacked(_certId, _ipfsCID, _pdfHash, _issuer));
     }
-}
+} 

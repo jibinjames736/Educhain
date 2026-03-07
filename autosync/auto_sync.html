@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CertificateIssuer – Auto Sync with MetaMask</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        #status { margin-top: 20px; white-space: pre-wrap; }
+        .connected { color: green; }
+        .disconnected { color: red; }
+    </style>
+</head>
+<body>
+    <h1>CertificateIssuer – Firebase to Blockchain Auto‑Sync</h1>
+    <p><strong>Status:</strong> <span id="connectionStatus">Not connected</span></p>
+    <p><strong>Maintainer Address:</strong> <span id="maintainerAddr"></span></p>
+    <p><strong>Listening to Firebase collection:</strong> <code>verifiedInstitutions</code></p>
+    <div id="status"></div>
+
+    <script>
+        // --- Firebase configuration ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDzc4rzr1vYjURProQv7Q1sWWnWOQgNipA",
+            authDomain: "cert-verify-b1961.firebaseapp.com",
+            projectId: "cert-verify-b1961",
+            storageBucket: "cert-verify-b1961.firebasestorage.app",
+            messagingSenderId: "494698941714",
+            appId: "1:494698941714:web:808a93c8e25fb0ed75b7cb",
+            measurementId: "G-Q45GY8LTLQ"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const institutionsRef = db.collection('verifiedInstitutions');
+
+        // --- Contract details ---
+        const contractAddress = "0x27EA51F786D667179E3e23B95f3A6060566765f5";
+        // Full ABI (exactly as it was when it worked)
+        const contractABI = [
+            {
+                "inputs": [{ "internalType": "address", "name": "_institution", "type": "address" }],
+                "name": "addInstitution",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [{ "internalType": "address", "name": "_listMaintainer", "type": "address" }],
+                "stateMutability": "nonpayable",
+                "type": "constructor"
+            },
+            {
+                "anonymous": false,
+                "inputs": [
+                    { "indexed": true, "internalType": "bytes32", "name": "batchId", "type": "bytes32" },
+                    { "indexed": true, "internalType": "address", "name": "issuer", "type": "address" },
+                    { "indexed": false, "internalType": "bytes32", "name": "merkleRoot", "type": "bytes32" }
+                ],
+                "name": "BatchRootSet",
+                "type": "event"
+            },
+            {
+                "anonymous": false,
+                "inputs": [
+                    { "indexed": true, "internalType": "string", "name": "certId", "type": "string" },
+                    { "indexed": true, "internalType": "address", "name": "issuer", "type": "address" },
+                    { "indexed": false, "internalType": "string", "name": "ipfsCID", "type": "string" },
+                    { "indexed": false, "internalType": "bytes32", "name": "pdfHash", "type": "bytes32" }
+                ],
+                "name": "CertificateIssued",
+                "type": "event"
+            },
+            {
+                "anonymous": false,
+                "inputs": [{ "indexed": true, "internalType": "string", "name": "certId", "type": "string" }],
+                "name": "CertificateRevoked",
+                "type": "event"
+            },
+            {
+                "anonymous": false,
+                "inputs": [{ "indexed": true, "internalType": "address", "name": "institution", "type": "address" }],
+                "name": "InstitutionAdded",
+                "type": "event"
+            },
+            {
+                "anonymous": false,
+                "inputs": [{ "indexed": true, "internalType": "address", "name": "institution", "type": "address" }],
+                "name": "InstitutionRemoved",
+                "type": "event"
+            },
+            {
+                "inputs": [
+                    { "internalType": "string", "name": "_certId", "type": "string" },
+                    { "internalType": "string", "name": "_ipfsCID", "type": "string" },
+                    { "internalType": "bytes32", "name": "_pdfHash", "type": "bytes32" },
+                    { "internalType": "bytes", "name": "_signature", "type": "bytes" }
+                ],
+                "name": "issueCertificate",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [{ "internalType": "address", "name": "_institution", "type": "address" }],
+                "name": "removeInstitution",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [{ "internalType": "string", "name": "_certId", "type": "string" }],
+                "name": "revokeCertificate",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    { "internalType": "bytes32", "name": "_batchId", "type": "bytes32" },
+                    { "internalType": "bytes32", "name": "_merkleRoot", "type": "bytes32" }
+                ],
+                "name": "setBatchRoot",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [{ "internalType": "bytes32", "name": "", "type": "bytes32" }],
+                "name": "batchIssuer",
+                "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [{ "internalType": "bytes32", "name": "", "type": "bytes32" }],
+                "name": "batchMerkleRoots",
+                "outputs": [{ "internalType": "bytes32", "name": "", "type": "bytes32" }],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+                "name": "certificateIds",
+                "outputs": [{ "internalType": "string", "name": "", "type": "string" }],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [{ "internalType": "string", "name": "", "type": "string" }],
+                "name": "certificates",
+                "outputs": [
+                    { "internalType": "string", "name": "ipfsCID", "type": "string" },
+                    { "internalType": "bytes32", "name": "pdfHash", "type": "bytes32" },
+                    { "internalType": "bytes", "name": "signature", "type": "bytes" },
+                    { "internalType": "address", "name": "issuer", "type": "address" },
+                    { "internalType": "bool", "name": "revoked", "type": "bool" }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    { "internalType": "string", "name": "_certId", "type": "string" },
+                    { "internalType": "string", "name": "_ipfsCID", "type": "string" },
+                    { "internalType": "bytes32", "name": "_pdfHash", "type": "bytes32" },
+                    { "internalType": "address", "name": "_issuer", "type": "address" }
+                ],
+                "name": "computeCertificateLeaf",
+                "outputs": [{ "internalType": "bytes32", "name": "", "type": "bytes32" }],
+                "stateMutability": "pure",
+                "type": "function"
+            },
+            {
+                "inputs": [{ "internalType": "string", "name": "_certId", "type": "string" }],
+                "name": "getCertificate",
+                "outputs": [
+                    { "internalType": "string", "name": "ipfsCID", "type": "string" },
+                    { "internalType": "bytes32", "name": "pdfHash", "type": "bytes32" },
+                    { "internalType": "bytes", "name": "signature", "type": "bytes" },
+                    { "internalType": "address", "name": "issuer", "type": "address" },
+                    { "internalType": "bool", "name": "revoked", "type": "bool" }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "listMaintainer",
+                "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [{ "internalType": "string", "name": "_certId", "type": "string" }],
+                "name": "possiblyExists",
+                "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [{ "internalType": "address", "name": "", "type": "address" }],
+                "name": "verifiedInstitutions",
+                "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    { "internalType": "bytes32", "name": "_batchId", "type": "bytes32" },
+                    { "internalType": "bytes32", "name": "_leaf", "type": "bytes32" },
+                    { "internalType": "bytes32[]", "name": "_proof", "type": "bytes32[]" }
+                ],
+                "name": "verifyCertificateInBatch",
+                "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
+                "stateMutability": "view",
+                "type": "function"
+            }
+        ];
+
+        let provider, signer, contract;
+        let maintainerAddress = null;
+        let listenerActive = false;
+
+        const statusDiv = document.getElementById('status');
+        const connectionSpan = document.getElementById('connectionStatus');
+        const maintainerSpan = document.getElementById('maintainerAddr');
+
+        // --- Helper to extract short error message ---
+        function getShortError(error) {
+            console.error('Full error details:', error);
+            let reason = null;
+            if (error.error && error.error.data && error.error.data.message) {
+                reason = error.error.data.message;
+            } else if (error.data && error.data.message) {
+                reason = error.data.message;
+            } else if (error.reason) {
+                reason = error.reason;
+            } else if (error.message) {
+                reason = error.message.split('\n')[0];
+            }
+            if (reason) {
+                const match = reason.match(/execution reverted: (.+)/i);
+                if (match) return match[1];
+                return reason;
+            }
+            return 'Unknown error (see console)';
+        }
+
+        function log(msg, isError = false) {
+            const p = document.createElement('div');
+            p.style.color = isError ? 'red' : 'black';
+            p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            statusDiv.appendChild(p);
+            statusDiv.scrollTop = statusDiv.scrollHeight;
+        }
+
+        async function connectAndListen() {
+            if (typeof window.ethereum === 'undefined') {
+                log('❌ MetaMask not installed!', true);
+                return;
+            }
+
+            try {
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                await provider.send("eth_requestAccounts", []);
+                signer = provider.getSigner();
+                const address = await signer.getAddress();
+                connectionSpan.innerHTML = `✅ Connected (${address})`;
+                connectionSpan.className = 'connected';
+                maintainerSpan.textContent = address;
+
+                contract = new ethers.Contract(contractAddress, contractABI, signer);
+                console.log('Contract functions:', Object.keys(contract.functions));
+
+                const maintainer = await contract.listMaintainer();
+                if (address.toLowerCase() !== maintainer.toLowerCase()) {
+                    log('⚠️ WARNING: Connected account is NOT the list maintainer. Transactions will fail.', true);
+                } else {
+                    maintainerAddress = address;
+                    log('✅ Connected as list maintainer. Listening for Firebase changes...');
+                    startFirebaseListener();
+                }
+            } catch (err) {
+                const short = getShortError(err);
+                log(`❌ Connection error: ${short}`, true);
+            }
+        }
+
+        function startFirebaseListener() {
+            if (listenerActive) return;
+            listenerActive = true;
+
+            institutionsRef.onSnapshot(async (snapshot) => {
+                for (const change of snapshot.docChanges()) {
+                    const doc = change.doc;
+                    const walletAddress = doc.id;
+
+                    if (!ethers.utils.isAddress(walletAddress)) {
+                        log(`⚠️ Skipping invalid address in document ${doc.id}: ${walletAddress}`, true);
+                        continue;
+                    }
+
+                    if (change.type === 'added') {
+                        log(`➕ Firebase addition detected: ${walletAddress}`);
+                        await sendTransaction('add', walletAddress);
+                    } else if (change.type === 'removed') {
+                        log(`➖ Firebase removal detected: ${walletAddress}`);
+                        await sendTransaction('remove', walletAddress);
+                    }
+                }
+            }, (error) => {
+                log(`❌ Firestore listener error: ${error.message}`, true);
+                listenerActive = false;
+            });
+        }
+
+        async function sendTransaction(type, walletAddress) {
+            if (!maintainerAddress) {
+                log('⚠️ Not connected as maintainer, skipping transaction.', true);
+                return;
+            }
+
+            try {
+                let tx;
+                if (type === 'add') {
+                    tx = await contract.addInstitution(walletAddress);
+                } else {
+                    tx = await contract.removeInstitution(walletAddress);
+                }
+                log(`⏳ Transaction sent: ${tx.hash} (waiting for confirmation...)`);
+                await tx.wait();
+                log(`✅ ${type === 'add' ? 'Added' : 'Removed'} ${walletAddress} on‑chain.`);
+            } catch (err) {
+                const short = getShortError(err);
+                log(`❌ Failed to ${type} ${walletAddress}: ${short}`, true);
+            }
+        }
+
+        window.addEventListener('load', () => {
+            connectAndListen();
+        });
+
+        if (window.ethereum) {
+            window.ethereum.on('accountsChanged', (accounts) => {
+                log('🔄 MetaMask account changed. Reconnecting...');
+                listenerActive = false;
+                connectAndListen();
+            });
+        }
+    </script>
+</body>
+</html>

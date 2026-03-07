@@ -3,7 +3,7 @@ import "../../styles/IssueCertificate.css";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { QRCodeCanvas } from "qrcode.react";
-import { BrowserProvider, Contract } from "ethers";
+import { BrowserProvider, Contract, getBytes, parseUnits } from "ethers"; // ethers v6
 import contractABI from "/src/contractABI.json";
 import { db } from "../../firebase";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
@@ -27,16 +27,12 @@ const IssueCertificate = ({ university }) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  // Generate PDF as base64 string (optimized for size)
+  // Generate PDF as base64 string
   const generatePDFBase64 = async () => {
     const element = document.getElementById("certificate");
     await new Promise(resolve => setTimeout(resolve, 300));
-    // Use scale 2 and JPEG compression
-    const canvas = await html2canvas(element, { 
-      scale: 2, 
-      useCORS: true 
-    });
-    const imgData = canvas.toDataURL("image/jpeg", 0.8); // JPEG with 80% quality
+    const canvas = await html2canvas(element, { scale: 2, useCORS: true });
+    const imgData = canvas.toDataURL("image/jpeg", 0.8);
     const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: "a4" });
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
@@ -68,10 +64,10 @@ const IssueCertificate = ({ university }) => {
       const backendUrl = import.meta.env.VITE_BACKEND_URL;
       const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS;
 
-      // ---- STEP 1: Generate PDF on frontend ----
+      // ---- STEP 1: Generate PDF ----
       const pdfBase64 = await generatePDFBase64();
 
-      // ---- STEP 2: PREPARE (send PDF and form data to backend) ----
+      // ---- STEP 2: Prepare (send PDF to backend) ----
       const prepareRes = await fetch(`${backendUrl}/api/prepare`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -84,15 +80,14 @@ const IssueCertificate = ({ university }) => {
       if (!prepareRes.ok) throw new Error(`Prepare failed (${prepareRes.status})`);
       const { pdfHash, tempId } = await prepareRes.json();
 
-      // ---- STEP 3: CONNECT TO METAMASK AND ENSURE CORRECT NETWORK ----
+      // ---- STEP 3: Connect MetaMask & ensure correct network ----
       if (!window.ethereum) throw new Error("MetaMask not installed");
       const provider = new BrowserProvider(window.ethereum);
       await provider.send("eth_requestAccounts", []);
       let signer = await provider.getSigner();
 
-      // Network check (Arbitrum Sepolia)
-      const network = await signer.provider.getNetwork();
-      const targetChainId = 421614n;
+      const network = await provider.getNetwork();
+      const targetChainId = 421614n; // Arbitrum Sepolia
       if (network.chainId !== targetChainId) {
         try {
           await window.ethereum.request({
@@ -122,21 +117,31 @@ const IssueCertificate = ({ university }) => {
       }
 
       const issuer = await signer.getAddress();
-      const signature = await signer.signMessage(pdfHash);
+      const signature = await signer.signMessage(getBytes(pdfHash));
       console.log("Hash signed by", issuer);
 
-      // ---- STEP 4: FINALIZE (backend encrypts, uploads to IPFS) ----
+      // ---- STEP 4: Finalize (backend encrypts & uploads to IPFS) ----
       const finalizeRes = await fetch(`${backendUrl}/api/finalize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tempId, signature, issuer }),
       });
-      if (!finalizeRes.ok) throw new Error(`Finalize failed (${finalizeRes.status})`);
+
+      if (!finalizeRes.ok) {
+        let errorData;
+        try {
+          errorData = await finalizeRes.json();
+        } catch (e) {
+          errorData = { error: finalizeRes.statusText };
+        }
+        throw new Error(`Finalize failed (${finalizeRes.status}): ${errorData.error || 'Unknown error'}${errorData.detail ? ' - ' + errorData.detail : ''}`);
+      }
+
       const finalData = await finalizeRes.json();
 
       setIpfsCid(finalData.cid);
 
-      // ---- STEP 5: DOWNLOAD ENCRYPTED PDF (optional) ----
+      // ---- STEP 5: Download encrypted PDF (optional) ----
       const pdfBytes = Uint8Array.from(atob(finalData.encryptedPdfBase64), c => c.charCodeAt(0));
       const blob = new Blob([pdfBytes], { type: "application/pdf" });
       const url = window.URL.createObjectURL(blob);
@@ -146,7 +151,7 @@ const IssueCertificate = ({ university }) => {
       link.click();
       window.URL.revokeObjectURL(url);
 
-      // ---- STEP 6: SUBMIT TO BLOCKCHAIN WITH GAS RETRY ----
+      // ---- STEP 6: Submit to blockchain (4 arguments + gas options) ----
       const contract = new Contract(contractAddress, contractABI, signer);
       let tx;
       let receipt;
@@ -155,22 +160,52 @@ const IssueCertificate = ({ university }) => {
 
       while (retries < maxRetries) {
         try {
-          const feeData = await signer.provider.getFeeData();
-          let maxFeePerGas = feeData.maxFeePerGas;
-          if (maxFeePerGas) {
-            maxFeePerGas = (maxFeePerGas * 120n) / 100n;
+          const feeData = await provider.getFeeData();
+          let gasOptions = {};
+
+          // Check if the network supports EIP-1559
+          if (feeData.maxFeePerGas) {
+            let maxFeePerGas = feeData.maxFeePerGas;
+            let maxPriorityFeePerGas = feeData.maxPriorityFeePerGas;
+
+            if (maxFeePerGas) {
+              const multiplier = 120n + BigInt(retries) * 20n;
+              maxFeePerGas = (maxFeePerGas * multiplier) / 100n;
+            } else {
+              maxFeePerGas = parseUnits('20', 'gwei');
+            }
+            if (!maxPriorityFeePerGas) {
+              maxPriorityFeePerGas = parseUnits('1', 'gwei');
+            }
+
+            gasOptions = { maxFeePerGas, maxPriorityFeePerGas };
+          } else {
+            // Legacy network: use gasPrice
+            let gasPrice = feeData.gasPrice;
+            if (!gasPrice) gasPrice = parseUnits('20', 'gwei');
+            // Increase by 20% per retry
+            const multiplier = 120n + BigInt(retries) * 20n;
+            gasPrice = (gasPrice * multiplier) / 100n;
+            gasOptions = { gasPrice };
           }
-          const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas;
 
-          console.log(`Attempt ${retries + 1}: maxFeePerGas = ${maxFeePerGas}`);
+          console.log(`Attempt ${retries + 1}: using gas options`, gasOptions);
 
+          // Optional static call to catch revert reasons
+          await contract.issueCertificate.staticCall(
+            finalData.certId,
+            finalData.cid,
+            finalData.pdfHashHex,
+            finalData.signature
+          );
+
+          // Actual transaction
           tx = await contract.issueCertificate(
             finalData.certId,
             finalData.cid,
             finalData.pdfHashHex,
             finalData.signature,
-            finalData.issuer,
-            { maxFeePerGas, maxPriorityFeePerGas }
+            gasOptions
           );
 
           receipt = await tx.wait();
@@ -178,9 +213,7 @@ const IssueCertificate = ({ university }) => {
         } catch (error) {
           if (error?.code === -32603 && error?.message?.includes("max fee per gas less than block base fee")) {
             retries++;
-            if (retries === maxRetries) {
-              throw new Error("Transaction failed after multiple retries due to gas fee issues.");
-            }
+            if (retries === maxRetries) throw new Error("Transaction failed after multiple retries.");
             await new Promise(resolve => setTimeout(resolve, 2000));
           } else {
             throw error;
@@ -188,25 +221,24 @@ const IssueCertificate = ({ university }) => {
         }
       }
 
-      //  STEP 7: STORE CERTIFICATE DATA IN FIRESTORE 
+      // ---- STEP 7: Store in Firestore ----
       const certDocRef = doc(db, "certificates", form.certId);
       await setDoc(certDocRef, {
         studentId: form.studentId,
         studentName: form.studentName,
         course: form.course,
         certId: form.certId,
-        issuer: issuer, // consider storing as lowercase for consistency
+        issuer: issuer,
         transactionHash: receipt.hash,
         ipfsCid: finalData.cid,
         aesKey: finalData.aesKeyWithIv,
         verificationUrl: finalData.verificationUrl,
         issuedAt: serverTimestamp(),
         universityName: university?.universityName || "CertVerify University",
-        // NEW: store university ID from the logged‑in university
         universityId: university?.id || university?.universityId || null,
       });
 
-      // ---- STEP 8: UPDATE UI ----
+      // ---- STEP 8: Update UI ----
       setIssued(true);
       setTxHash(receipt.hash);
       setVerificationUrl(finalData.verificationUrl);
@@ -220,7 +252,7 @@ const IssueCertificate = ({ university }) => {
     }
   };
 
-  //  PREVIEW PDF DOWNLOAD
+  // Preview PDF download
   const generatePDF = async () => {
     const element = document.getElementById("certificate");
     await new Promise(resolve => setTimeout(resolve, 300));
