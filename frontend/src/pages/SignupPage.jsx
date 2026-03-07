@@ -12,6 +12,7 @@ import {
 import { db, auth } from "../firebase";
 import { signInAnonymously } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
+import { ethers } from "ethers"; // added for blockchain check
 
 const SignupPage = () => {
   const navigate = useNavigate();
@@ -29,22 +30,26 @@ const SignupPage = () => {
     email: "",
   });
 
-  /* SHORTEN WALLET */
+  // Minimal ABI for the verifiedInstitutions function
+  const contractABI = [
+    "function verifiedInstitutions(address) view returns (bool)"
+  ];
+  const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS;
+  const RPC_URL = "https://sepolia-rollup.arbitrum.io/rpc";
 
+  /* SHORTEN WALLET */
   const shortenAddress = (address) => {
     if (!address) return "";
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
   /* EMAIL VALIDATION */
-
   const isValidEmail = (email) => {
     if (!email) return true;
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
   /* CONNECT WALLET */
-
   const connectWallet = async () => {
     if (!window.ethereum) {
       alert("MetaMask not found");
@@ -66,10 +71,8 @@ const SignupPage = () => {
       });
 
       const address = accounts[0];
-
       setWalletAddress(address);
       localStorage.setItem("wallet", address);
-
     } catch (err) {
       console.error(err);
       alert("Wallet connection failed");
@@ -79,7 +82,6 @@ const SignupPage = () => {
   };
 
   /* WALLET LISTENER */
-
   useEffect(() => {
     const savedWallet = localStorage.getItem("wallet");
     if (savedWallet) setWalletAddress(savedWallet);
@@ -101,15 +103,11 @@ const SignupPage = () => {
     window.ethereum.on("accountsChanged", handleAccountsChanged);
 
     return () => {
-      window.ethereum.removeListener(
-        "accountsChanged",
-        handleAccountsChanged
-      );
+      window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
     };
   }, []);
 
   /* FORM CHANGE */
-
   const handleChange = (e) => {
     setFormData({
       ...formData,
@@ -118,7 +116,6 @@ const SignupPage = () => {
   };
 
   /* SIGNUP */
-
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -130,6 +127,23 @@ const SignupPage = () => {
     if (!isValidEmail(formData.email)) {
       alert("Invalid email format");
       return;
+    }
+
+    // ----- BLOCKCHAIN VERIFICATION FOR UNIVERSITIES -----
+    if (role === "UNIVERSITY") {
+      try {
+        const provider = new ethers.JsonRpcProvider(RPC_URL);
+        const contract = new ethers.Contract(contractAddress, contractABI, provider);
+        const isVerified = await contract.verifiedInstitutions(walletAddress);
+        if (!isVerified) {
+          alert("This wallet address is not verified as a university on the blockchain. Only verified institutions can sign up as a university.");
+          return;
+        }
+      } catch (err) {
+        console.error("Error checking verification on blockchain:", err);
+        alert("Failed to verify university status on blockchain. Please try again later.");
+        return;
+      }
     }
 
     try {
@@ -145,27 +159,17 @@ const SignupPage = () => {
 
         alert(`Wallet already registered as ${existingUser.role}`);
 
-        localStorage.setItem(
-          "userData",
-          JSON.stringify(existingUser)
-        );
+        localStorage.setItem("userData", JSON.stringify(existingUser));
 
-        if (existingUser.role === "STUDENT")
-          navigate("/studentdashboard");
-        else
-          navigate("/universitydashboard");
+        if (existingUser.role === "STUDENT") navigate("/studentdashboard");
+        else navigate("/universitydashboard");
 
         return;
       }
 
       /* EMAIL UNIQUE */
-
       if (formData.email) {
-        const emailQuery = query(
-          usersRef,
-          where("email", "==", formData.email)
-        );
-
+        const emailQuery = query(usersRef, where("email", "==", formData.email));
         const emailSnap = await getDocs(emailQuery);
 
         if (!emailSnap.empty) {
@@ -175,13 +179,8 @@ const SignupPage = () => {
       }
 
       /* STUDENT ID UNIQUE */
-
       if (role === "STUDENT") {
-        const studentQuery = query(
-          usersRef,
-          where("studentId", "==", formData.studentId)
-        );
-
+        const studentQuery = query(usersRef, where("studentId", "==", formData.studentId));
         const studentSnap = await getDocs(studentQuery);
 
         if (!studentSnap.empty) {
@@ -191,13 +190,8 @@ const SignupPage = () => {
       }
 
       /* UNIVERSITY REGISTRATION UNIQUE */
-
       if (role === "UNIVERSITY") {
-        const regQuery = query(
-          usersRef,
-          where("registrationId", "==", formData.registrationId)
-        );
-
+        const regQuery = query(usersRef, where("registrationId", "==", formData.registrationId));
         const regSnap = await getDocs(regQuery);
 
         if (!regSnap.empty) {
@@ -207,12 +201,11 @@ const SignupPage = () => {
       }
 
       /* CREATE USER PAYLOAD */
-
       const payload = {
         wallet: walletAddress,
         role,
         email: formData.email || "",
-        approved: role === "STUDENT",
+        approved: role === "STUDENT", // universities require manual approval? You may change this.
         createdAt: new Date(),
       };
 
@@ -229,17 +222,12 @@ const SignupPage = () => {
 
       await setDoc(walletRef, payload);
 
-      localStorage.setItem(
-        "userData",
-        JSON.stringify(payload)
-      );
+      localStorage.setItem("userData", JSON.stringify(payload));
 
       alert("Signup successful!");
 
-      if (role === "STUDENT")
-        navigate("/studentdashboard");
-      else
-        navigate("/universitydashboard");
+      if (role === "STUDENT") navigate("/studentdashboard");
+      else navigate("/universitydashboard");
 
     } catch (err) {
       console.error("Signup Error:", err);
@@ -249,21 +237,14 @@ const SignupPage = () => {
 
   return (
     <div className="signup-page">
-
       <div className="signup-container">
-
-        <h2 className="signup-title">
-          Welcome to CertVerify
-        </h2>
-
+        <h2 className="signup-title">Welcome to CertVerify</h2>
         <p className="signup-subtitle">
           Register to issue and verify blockchain credentials
         </p>
 
         {/* ROLE SWITCH */}
-
         <div className="role-toggle">
-
           <button
             type="button"
             className={role === "STUDENT" ? "active" : ""}
@@ -271,7 +252,6 @@ const SignupPage = () => {
           >
             Student
           </button>
-
           <button
             type="button"
             className={role === "UNIVERSITY" ? "active" : ""}
@@ -279,20 +259,16 @@ const SignupPage = () => {
           >
             University
           </button>
-
         </div>
 
         {/* WALLET */}
-
         <div className="wallet-section">
-
           <input
             value={walletAddress ? shortenAddress(walletAddress) : ""}
             readOnly
             placeholder="Wallet Address"
             className="wallet-input"
           />
-
           <button
             type="button"
             className="wallet-btn"
@@ -300,13 +276,10 @@ const SignupPage = () => {
           >
             Connect Wallet
           </button>
-
         </div>
 
         {/* FORM */}
-
         <form className="signup-form" onSubmit={handleSubmit}>
-
           {role === "STUDENT" && (
             <>
               <input
@@ -315,14 +288,12 @@ const SignupPage = () => {
                 required
                 onChange={handleChange}
               />
-
               <input
                 name="studentId"
                 placeholder="Student ID"
                 required
                 onChange={handleChange}
               />
-
               <input
                 name="universityId"
                 placeholder="University ID"
@@ -340,7 +311,6 @@ const SignupPage = () => {
                 required
                 onChange={handleChange}
               />
-
               <input
                 name="registrationId"
                 placeholder="Accreditation ID"
@@ -360,11 +330,8 @@ const SignupPage = () => {
           <button type="submit" className="signup-submit-btn">
             Sign Up
           </button>
-
         </form>
-
       </div>
-
     </div>
   );
 };
