@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import "../../styles/Universitydashboard.css";
 
 import Overview from "./Overview";
+import BatchIssuance from "./BatchIssuance";
 import IssueCertificate from "./IssueCertificate";
 import ManageCertificates from "./ManageCertificates";
 import Profile from "./Profile";
@@ -71,6 +72,13 @@ const Universitydashboard = () => {
           >
             Issue Certificate
           </button>
+          
+          <button
+            className={isActive("BATCHISSUANCE")}
+            onClick={() => setActiveTab("BATCHISSUANCE")}
+          >
+            Batch Issuance
+          </button>
 
           <button
             className={isActive("MANAGE")}
@@ -106,8 +114,10 @@ const Universitydashboard = () => {
           <IssueCertificate university={profile} />
         )}
 
-        {activeTab === "MANAGE" && (
-          <ManageCertificates />
+        
+
+       {activeTab === "BATCHISSUANCE" && profile && (
+         <BatchIssuance university={profile} />
         )}
 
         {activeTab === "PROFILE" && profile && (

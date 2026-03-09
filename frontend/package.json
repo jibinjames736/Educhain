@@ -14,10 +14,13 @@
     "firebase": "^12.7.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.0",
+    "keccak256": "^1.0.6",
+    "merkletreejs": "^0.6.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-router-dom": "^7.11.0"
+    "react-router-dom": "^7.11.0",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
