@@ -11,27 +11,22 @@ const router = createBrowserRouter([
     path: "/",
     element: <HomePage />,
   },
-  
   {
-    path: "/verify",
+    path: "/verify/:certId",   // ✅ dynamic parameter
     element: <VerifyPage />,
   },
   {
     path: "/signup",
     element: <SignupPage />,
   },
-
   {
     path: "/studentdashboard",
     element: <Studentdashboard />,
   },
-
   {
     path: "/universitydashboard",
     element: <Universitydashboard />,
   },
-
-
 ]);
 
 function App() {
