@@ -1,4 +1,4 @@
 const serverless = require('serverless-http');
-const app = require('../app'); // adjust the path if your main file has a different name
+const app = require('../backend/app');  
 
 module.exports.handler = serverless(app);
