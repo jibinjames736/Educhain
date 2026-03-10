@@ -330,7 +330,7 @@ app.post('/api/finalize', async (req, res) => {
 
     const keyWithIv = Buffer.concat([key, iv]).toString('base64');
 
-    // ✅ CHANGE: Use environment variable for base URL, fallback to your Vercel app
+    // ✅ Use environment variable for base URL, fallback to your Vercel app
     const baseUrl = process.env.VERIFICATION_BASE_URL || 'https://educhain-rust.vercel.app';
     const verificationUrl = `${baseUrl}/verify/${formData.certId}`;
 
@@ -444,5 +444,12 @@ app.post('/api/verify-qr', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ Backend running on port ${PORT}`));
+// ========== 🚀 CHANGES FOR VERCEL DEPLOYMENT ==========
+// Export the app for serverless functions
+module.exports = app;
+
+// Only start the server when running locally (not on Vercel)
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => console.log(`✅ Backend running on port ${PORT}`));
+}
