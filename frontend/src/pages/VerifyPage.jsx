@@ -12,6 +12,7 @@ export default function VerifyPage() {
   const [universityId, setUniversityId] = useState("");
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // Load uploaded file from previous page
   useEffect(() => {
@@ -30,33 +31,66 @@ export default function VerifyPage() {
     setFile(selected);
     setFileName(selected.name);
     setResults(null);
+    setError("");
   };
 
   const handleVerify = async () => {
-    if (!file || !certId || !universityId)
-      return alert("Fill all fields");
+    if (!file || !certId || !universityId) {
+      alert("Fill all fields");
+      return;
+    }
 
     setLoading(true);
+    setError("");
+    setResults(null);
 
     const formData = new FormData();
     formData.append("certificates", file);
     formData.append("certId", certId);
     formData.append("universityId", universityId);
 
-    const res = await fetch(
-      `${import.meta.env.VITE_BACKEND_URL}/api/verify-multiple`,
-      { method: "POST", body: formData }
-    );
+    // Use environment variable or fallback to relative URL (for combined deployment)
+    const baseUrl = import.meta.env.VITE_BACKEND_URL || "";
+    const url = baseUrl ? `${baseUrl}/api/verify-multiple` : "/api/verify-multiple";
 
-    const data = await res.json();
-    setResults(data.results);
-    setLoading(false);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 sec timeout
+
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`Server error (${res.status}): ${errorText || res.statusText}`);
+      }
+
+      const data = await res.json();
+      if (data.results) {
+        setResults(data.results);
+      } else {
+        throw new Error("Invalid response format");
+      }
+    } catch (err) {
+      clearTimeout(timeoutId);
+      console.error("Verification error:", err);
+      if (err.name === "AbortError") {
+        setError("Request timed out. Please try again.");
+      } else {
+        setError(err.message || "Verification failed. Check console.");
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Determine status based on verification method
   const getStatus = (r) => {
     if (!r.success) return "invalid";
-    // If onChain.revoked exists and is true, certificate is revoked
     if (r.onChain?.revoked) return "revoked";
 
     if (r.method === 'individual') {
@@ -112,9 +146,17 @@ export default function VerifyPage() {
         <button
           className="verify-main-btn"
           onClick={handleVerify}
+          disabled={loading}
         >
           {loading ? "Verifying..." : "Verify Certificate"}
         </button>
+
+        {/* ERROR DISPLAY */}
+        {error && (
+          <div className="error-message" style={{ color: "red", marginTop: "1rem" }}>
+            ⚠️ {error}
+          </div>
+        )}
       </div>
 
       {/* RESULTS */}
@@ -130,17 +172,14 @@ export default function VerifyPage() {
             <div className="result-details">
               <p>Hash Match: {r.verification.hashMatch ? "✅" : "❌"}</p>
 
-              {/* Individual certificate details */}
               {r.method === 'individual' && (
                 <p>Signature Valid: {r.verification.signatureValid ? "✅" : "❌"}</p>
               )}
 
-              {/* Batch certificate details */}
               {r.method === 'batch' && (
                 <p>Merkle Proof Valid: {r.verification.merkleProofValid ? "✅" : "❌"}</p>
               )}
 
-              {/* Revoked status – only show if present */}
               {r.onChain?.revoked !== undefined && (
                 <p>Revoked: {r.onChain.revoked ? "Yes" : "No"}</p>
               )}
