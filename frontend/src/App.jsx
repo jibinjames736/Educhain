@@ -12,7 +12,7 @@ const router = createBrowserRouter([
     element: <HomePage />,
   },
   {
-    path: "/verify/:certId",   // ✅ dynamic parameter
+    path: "/verify/:certId?",   // ✅ optional parameter
     element: <VerifyPage />,
   },
   {
