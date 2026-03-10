@@ -267,6 +267,9 @@ const BatchIssuance = ({ university }) => {
     pdf.save(`${form.certId}.pdf`);
   };
 
+  // Use environment variable for base URL, fallback to actual Vercel app
+  const baseUrl = import.meta.env.VITE_APP_URL || 'https://educhain-rust.vercel.app';
+
   return (
     <div className="batch-issuance-container">
       <h2>Batch Issuance</h2>
@@ -458,7 +461,7 @@ const BatchIssuance = ({ university }) => {
               </div>
               <div className="cert-qr">
                 <QRCodeCanvas
-                  value={`https://certverify.app/verify/${form.certId}`}
+                  value={`${baseUrl}/verify/${form.certId}`}
                   size={110}
                 />
                 <span>Scan to Verify</span>

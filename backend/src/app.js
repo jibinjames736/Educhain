@@ -329,7 +329,10 @@ app.post('/api/finalize', async (req, res) => {
     }
 
     const keyWithIv = Buffer.concat([key, iv]).toString('base64');
-    const verificationUrl = `https://certverify.app/verify/${formData.certId}`;
+
+    // ✅ CHANGE: Use environment variable for base URL, fallback to your Vercel app
+    const baseUrl = process.env.VERIFICATION_BASE_URL || 'https://educhain-rust.vercel.app';
+    const verificationUrl = `${baseUrl}/verify/${formData.certId}`;
 
     res.json({
       cid,

@@ -265,9 +265,11 @@ const IssueCertificate = ({ university }) => {
     pdf.save(`${form.certId || "certificate"}.pdf`);
   };
 
+  // Use environment variable for base URL, fallback to actual Vercel app
+  const baseUrl = import.meta.env.VITE_APP_URL || 'https://educhain-rust.vercel.app';
   const verificationURL = form.certId
-    ? `https://certverify.app/verify/${form.certId}`
-    : "https://certverify.app/pending";
+    ? `${baseUrl}/verify/${form.certId}`
+    : `${baseUrl}/pending`;
 
   return (
     <div className="issue-container">
