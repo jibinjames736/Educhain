@@ -106,14 +106,15 @@ const BatchIssuance = ({ university }) => {
       if (!window.ethereum) throw new Error("MetaMask not installed");
       const provider = new BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
-      const issuer = await signer.getAddress();
+      const issuer = await signer.getAddress(); // mixed case
+      const issuerLower = issuer.toLowerCase(); // ✅ store lowercase
 
       const signature = await signer.signMessage(getBytes(pdfHash));
 
       const finalizeRes = await fetch(`${backendUrl}/api/finalize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tempId, signature, issuer }),
+        body: JSON.stringify({ tempId, signature, issuer: issuerLower }),
       });
       if (!finalizeRes.ok) throw new Error("Finalize failed");
       const finalData = await finalizeRes.json();
@@ -135,10 +136,10 @@ const BatchIssuance = ({ university }) => {
         ...form,
         ipfsCid: finalData.cid,
         pdfHash: finalData.pdfHashHex,
-        issuer,
+        issuer: issuerLower,               // ✅ stored lowercase
         signature,
         encryptedPdfBase64: finalData.encryptedPdfBase64,
-        aesKey: finalData.aesKeyWithIv,      // <-- added for decryption
+        aesKey: finalData.aesKeyWithIv,
         timestamp: Date.now(),
       };
       setCertificates((prev) => [...prev, newCert]);
@@ -210,23 +211,23 @@ const BatchIssuance = ({ university }) => {
         batchId,
         batchName: batchName || `Batch ${new Date().toLocaleString()}`,
         root: "0x" + root,
-        issuer: await signer.getAddress(),
+        issuer: (await signer.getAddress()).toLowerCase(), // ✅ store lowercase
         transactionHash,
         certificates: certificatesWithProofs,
         createdAt: serverTimestamp(),
-        universityName: university?.universityName || "CertVerify University", // optional, but helpful
-        universityId: university?.id || university?.universityId || null,
+        universityName: university?.universityName || "CertVerify University",
+        universityId: university?.id || university?.universityId || "", // ✅ ensure string, not null
       });
 
       // Store each certificate with transaction hash, university name, and university ID
       for (const cert of certificatesWithProofs) {
         const certRef = doc(db, "certificates", cert.certId);
         await setDoc(certRef, {
-          ...cert,                    // includes aesKey now
+          ...cert,                    // includes aesKey, issuer already lowercase
           batchId,
           transactionHash,
           universityName: university?.universityName || "CertVerify University",
-          universityId: university?.id || university?.universityId || null,
+          universityId: university?.id || university?.universityId || "", // ✅ ensure string
           issuedAt: serverTimestamp(),
         });
       }

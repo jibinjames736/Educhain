@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import "../../styles/ManageCertificates.css";
 import { db } from "../../firebase";
-import { collection, getDocs } from "firebase/firestore"; // no where clause
+import { collection, getDocs } from "firebase/firestore";
 import { BrowserProvider, Contract, JsonRpcProvider, isAddress } from "ethers";
 import contractABI from "/src/contractABI.json";
 
@@ -13,46 +13,20 @@ const ManageCertificates = ({ university }) => {
   const [revokingId, setRevokingId] = useState(null);
   const [onChainStatus, setOnChainStatus] = useState({});
   const [statusLoading, setStatusLoading] = useState({});
-  const [issuerAddress, setIssuerAddress] = useState(null);
 
-  // RPC URL from environment or fallback
   const rpcUrl = import.meta.env.VITE_RPC_URL || "https://sepolia-rollup.arbitrum.io/rpc";
+  const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS;
+  const universityName = university?.universityName;
 
-  // Determine the issuer address 
-  useEffect(() => {
-    const getIssuer = async () => {
-      let address = null;
-      if (university?.wallet) {
-        address = university.wallet;
-      } else {
-        const storedWallet = localStorage.getItem("universityWallet");
-        if (storedWallet) address = storedWallet;
-      }
-      if (address) {
-        setIssuerAddress(address);
-        return;
-      }
-      // Fallback: get from MetaMask
-      if (window.ethereum) {
-        try {
-          const provider = new BrowserProvider(window.ethereum);
-          await provider.send("eth_requestAccounts", []);
-          const signer = await provider.getSigner();
-          const addr = await signer.getAddress();
-          setIssuerAddress(addr);
-        } catch (error) {
-          console.error("Failed to get address from MetaMask:", error);
-        }
-      }
-    };
-    getIssuer();
-  }, [university]);
-
-  console.log("🔍 Issuer address (original case):", issuerAddress);
-
-  // Fetch ALL certificates from Firestore (no issuer filter)
+  // Fetch all certificates from Firestore and filter by universityName
   useEffect(() => {
     const fetchAllCertificates = async () => {
+      if (!universityName) {
+        console.warn("⚠️ No university name available");
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       try {
         const querySnapshot = await getDocs(collection(db, "certificates"));
@@ -60,17 +34,15 @@ const ManageCertificates = ({ university }) => {
           id: doc.id,
           ...doc.data(),
         }));
-        console.log(`📄 Total certificates in Firestore: ${allCerts.length}`);
 
-        // Filter client‑side by issuer (case‑insensitive)
-        const issuerLower = issuerAddress?.toLowerCase();
-        const certs = issuerLower
-          ? allCerts.filter(cert => cert.issuer?.toLowerCase() === issuerLower)
-          : [];
-        console.log(`📄 After filtering by issuer: ${certs.length} certificates`);
+        // Filter by universityName (case‑insensitive)
+        const filteredCerts = allCerts.filter(
+          (cert) =>
+            cert.universityName?.toLowerCase() === universityName.toLowerCase()
+        );
 
-        setCertificates(certs);
-        setFiltered(certs);
+        setCertificates(filteredCerts);
+        setFiltered(filteredCerts);
       } catch (error) {
         console.error("❌ Error fetching certificates:", error);
       } finally {
@@ -78,22 +50,22 @@ const ManageCertificates = ({ university }) => {
       }
     };
 
-    if (issuerAddress) {
-      fetchAllCertificates();
-    } else {
-      setLoading(false);
-    }
-  }, [issuerAddress]);
+    fetchAllCertificates();
+  }, [universityName]);
 
-  // Function to fetch on‑chain revocation status for a single certificate
+  // Fetch on‑chain status only for individual certificates
+  useEffect(() => {
+    const individualCerts = certificates.filter(cert => !(cert.proof && cert.batchId));
+    if (individualCerts.length === 0) return;
+
+    individualCerts.forEach(cert => {
+      fetchSingleStatus(cert.certId);
+    });
+  }, [certificates]);
+
   const fetchSingleStatus = async (certId) => {
     setStatusLoading(prev => ({ ...prev, [certId]: true }));
     try {
-      console.log(`🔍 Fetching on‑chain status for certId: "${certId}"`);
-
-      const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS;
-      console.log("Contract address:", contractAddress);
-
       if (!isAddress(contractAddress)) {
         throw new Error(`Invalid contract address: ${contractAddress}`);
       }
@@ -102,41 +74,23 @@ const ManageCertificates = ({ university }) => {
       const contract = new Contract(contractAddress, contractABI, provider);
 
       const certData = await contract.getCertificate(certId);
-      console.log(`✅ Raw data for ${certId}:`, certData);
-
       const zeroAddress = "0x0000000000000000000000000000000000000000";
       const exists = certData.issuer.toLowerCase() !== zeroAddress;
 
       if (!exists) {
-        console.warn(`⚠️ Certificate ${certId} does not exist on‑chain.`);
         setOnChainStatus(prev => ({ ...prev, [certId]: "NOT_FOUND" }));
       } else {
-        console.log(`✅ Status for ${certId}: revoked = ${certData.revoked}`);
         setOnChainStatus(prev => ({ ...prev, [certId]: certData.revoked }));
       }
     } catch (err) {
-      console.error(`❌ Failed to fetch status for ${certId}:`, {
-        message: err.message,
-        code: err.code,
-        reason: err.reason,
-        data: err.data,
-      });
+      console.error(`❌ Failed to fetch status for ${certId}:`, err.message);
       setOnChainStatus(prev => ({ ...prev, [certId]: null }));
     } finally {
       setStatusLoading(prev => ({ ...prev, [certId]: false }));
     }
   };
 
-  // Fetch status for all certificates when certificates are loaded
-  useEffect(() => {
-    if (certificates.length === 0) return;
-    console.log("📌 Fetching on‑chain status for all certificates...");
-    certificates.forEach(cert => {
-      fetchSingleStatus(cert.certId);
-    });
-  }, [certificates]);
-
-  // Filter by search term
+  // Filter by search term (certificate ID)
   useEffect(() => {
     const lower = searchTerm.toLowerCase();
     setFiltered(
@@ -179,9 +133,7 @@ const ManageCertificates = ({ university }) => {
         signer = await newProvider.getSigner();
       }
 
-      const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS;
       const contract = new Contract(contractAddress, contractABI, signer);
-
       const tx = await contract.revokeCertificate(certId);
       await tx.wait();
 
@@ -230,12 +182,18 @@ const ManageCertificates = ({ university }) => {
         </thead>
         <tbody>
           {filtered.map((cert) => {
+            const isBatch = cert.proof && cert.batchId;
             const statusValue = onChainStatus[cert.certId];
             const isLoadingStatus = statusLoading[cert.certId];
+
             let statusText = "UNKNOWN";
-            if (statusValue === true) statusText = "REVOKED";
-            else if (statusValue === false) statusText = "ACTIVE";
-            else if (statusValue === "NOT_FOUND") statusText = "NOT ON CHAIN";
+            if (isBatch) {
+              statusText = "BATCH";
+            } else {
+              if (statusValue === true) statusText = "REVOKED";
+              else if (statusValue === false) statusText = "ACTIVE";
+              else if (statusValue === "NOT_FOUND") statusText = "NOT ON CHAIN";
+            }
 
             return (
               <tr key={cert.certId}>
@@ -257,9 +215,9 @@ const ManageCertificates = ({ university }) => {
                 <td>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                     <span className={`status ${statusText.toLowerCase().replace(/ /g, '-')}`}>
-                      {isLoadingStatus ? "Loading..." : statusText}
+                      {isLoadingStatus && !isBatch ? "Loading..." : statusText}
                     </span>
-                    {!isLoadingStatus && (statusText === "UNKNOWN" || statusText === "NOT ON CHAIN") && (
+                    {!isBatch && !isLoadingStatus && (statusText === "UNKNOWN" || statusText === "NOT ON CHAIN") && (
                       <button
                         className="refresh-status-btn"
                         onClick={() => fetchSingleStatus(cert.certId)}
@@ -277,7 +235,7 @@ const ManageCertificates = ({ university }) => {
                   </div>
                 </td>
                 <td>
-                  {statusText === "ACTIVE" && (
+                  {!isBatch && statusText === "ACTIVE" && (
                     <button
                       className="revoke-btn"
                       onClick={() => revokeCertificate(cert.certId)}
@@ -293,7 +251,7 @@ const ManageCertificates = ({ university }) => {
           {filtered.length === 0 && (
             <tr>
               <td colSpan="7" style={{ textAlign: "center", padding: "2rem" }}>
-                No certificates found.
+                No certificates found for this university.
               </td>
             </tr>
           )}
