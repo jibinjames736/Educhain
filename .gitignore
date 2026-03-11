@@ -1,2 +1,4 @@
 backend/src/serviceAccountKey.json
 node_modules
+.vercel
+.env*.local
