@@ -444,6 +444,9 @@ app.post('/api/verify-qr', async (req, res) => {
   }
 });
 
+app.get('/api/test', (req, res) => {
+  res.json({ message: 'GET test works' });
+});
 // ========== 🚀 CHANGES FOR VERCEL DEPLOYMENT ==========
 // Export the app for serverless functions
 module.exports = app;
