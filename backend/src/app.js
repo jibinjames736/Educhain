@@ -69,22 +69,29 @@ function computeLeaf(certId, ipfsCID, pdfHashHex, issuerAddress) {
   return ethers.utils.keccak256(encoded);
 }
 
-// ==================== VERIFICATION CORE ====================
+// ==================== VERIFICATION CORE with timing logs ====================
 async function verifyCertificateBuffer(fileBuffer, fileName, certId, universityId) {
+  const startTime = Date.now();
   try {
     const fileHash = cryptoLib.computeHash(fileBuffer);
     const fileHashHex = '0x' + fileHash.toString('hex');
     console.log(`[${fileName}] Computed file hash: ${fileHashHex}`);
 
+    console.time(`[${fileName}] Connect to blockchain`);
     const provider = new ethers.providers.JsonRpcProvider(process.env.ETHEREUM_RPC_URL);
     const contract = new ethers.Contract(process.env.CONTRACT_ADDRESS, contractABI, provider);
+    console.timeEnd(`[${fileName}] Connect to blockchain`);
 
     if (!db) throw new Error('Database not available');
+
+    console.time(`[${fileName}] Firestore: find university`);
     console.log(`[${fileName}] Looking up university with registrationId: "${universityId}"`);
     const snapshot = await db.collection('users')
       .where('registrationId', '==', universityId)
       .limit(1)
       .get();
+    console.timeEnd(`[${fileName}] Firestore: find university`);
+
     if (snapshot.empty) throw new Error(`University ID ${universityId} not found in database`);
     const uniData = snapshot.docs[0].data();
     if (uniData.role !== 'UNIVERSITY') throw new Error(`User ${universityId} is not a university`);
@@ -94,9 +101,13 @@ async function verifyCertificateBuffer(fileBuffer, fileName, certId, universityI
     // Try individual certificate
     let individualCertData = null;
     try {
+      console.time(`[${fileName}] Blockchain: getCertificate`);
       const certData = await contract.getCertificate(certId);
+      console.timeEnd(`[${fileName}] Blockchain: getCertificate`);
       if (certData && certData[0] !== '') individualCertData = certData;
-    } catch (err) { /* ignore, fallback to batch */ }
+    } catch (err) {
+      console.log(`[${fileName}] getCertificate threw, falling back to batch`);
+    }
 
     if (individualCertData) {
       const [ipfsCID, pdfHash, signature, issuer, revoked] = individualCertData;
@@ -109,6 +120,8 @@ async function verifyCertificateBuffer(fileBuffer, fileName, certId, universityI
       } catch (err) {
         console.error(`[${fileName}] Signature verification error:`, err.message);
       }
+      const duration = Date.now() - startTime;
+      console.log(`[${fileName}] Verification completed in ${duration}ms`);
       return {
         fileName, success: true, certId, fileHash: fileHashHex, method: 'individual',
         onChain: { ipfsCID, pdfHash, issuer, revoked },
@@ -119,11 +132,13 @@ async function verifyCertificateBuffer(fileBuffer, fileName, certId, universityI
 
     // Batch verification
     console.log(`[${fileName}] Falling back to batch verification.`);
+    console.time(`[${fileName}] Firestore: find batch certificate`);
     const certSnapshot = await db.collection('certificates')
       .where('certId', '==', certId)
       .where('issuer', '==', expectedAddress)
       .limit(1)
       .get();
+    console.timeEnd(`[${fileName}] Firestore: find batch certificate`);
 
     if (certSnapshot.empty) throw new Error('Certificate not found on‑chain or in database');
     const certData = certSnapshot.docs[0].data();
@@ -134,10 +149,19 @@ async function verifyCertificateBuffer(fileBuffer, fileName, certId, universityI
     const leaf = computeLeaf(certId, ipfsCid, storedPdfHash, expectedAddress);
     const batchIdClean = batchId.replace(/-/g, '').padEnd(64, '0');
     const batchIdBytes32 = '0x' + batchIdClean;
-    const merkleProofValid = await contract.verifyCertificateInBatch(batchIdBytes32, leaf, proof);
-    if (!merkleProofValid) throw new Error('Merkle proof invalid – certificate not part of the batch');
-    const root = await contract.batchMerkleRoots(batchIdBytes32);
 
+    console.time(`[${fileName}] Blockchain: verifyCertificateInBatch`);
+    const merkleProofValid = await contract.verifyCertificateInBatch(batchIdBytes32, leaf, proof);
+    console.timeEnd(`[${fileName}] Blockchain: verifyCertificateInBatch`);
+
+    if (!merkleProofValid) throw new Error('Merkle proof invalid – certificate not part of the batch');
+
+    console.time(`[${fileName}] Blockchain: batchMerkleRoots`);
+    const root = await contract.batchMerkleRoots(batchIdBytes32);
+    console.timeEnd(`[${fileName}] Blockchain: batchMerkleRoots`);
+
+    const duration = Date.now() - startTime;
+    console.log(`[${fileName}] Verification completed in ${duration}ms`);
     return {
       fileName, success: true, certId, fileHash: fileHashHex, method: 'batch',
       onChain: { batchId: batchIdBytes32, root },
@@ -145,7 +169,8 @@ async function verifyCertificateBuffer(fileBuffer, fileName, certId, universityI
       university: { name: uniData.universityName || uniData.name, email: uniData.email, address: expectedAddress }
     };
   } catch (error) {
-    console.error(`[${fileName}] Verification error:`, error.message);
+    const duration = Date.now() - startTime;
+    console.error(`[${fileName}] Verification error after ${duration}ms:`, error.message);
     return { fileName, success: false, error: error.message };
   }
 }
