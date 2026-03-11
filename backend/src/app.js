@@ -50,67 +50,35 @@ try {
   const admin = require('firebase-admin');
 
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-
-    const serviceAccount = JSON.parse(
-      process.env.FIREBASE_SERVICE_ACCOUNT
-    );
-
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
-    });
-
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
     console.log("✅ Firebase initialized from ENV");
-
   } else {
-
-    const serviceAccount =
-      require('./serviceAccountKey.json');
-
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
-    });
-
+    const serviceAccount = require('./serviceAccountKey.json');
+    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
     console.log("✅ Firebase initialized from local file");
-
   }
 
   db = admin.firestore();
-
 } catch (err) {
-
   console.error("Firebase init error:", err.message);
-
 }
 
 /* =====================================================
-   OPTIONAL LOCAL IPFS HEALTH CHECK
-   (Only for local dev, skipped on Vercel)
+   OPTIONAL LOCAL IPFS HEALTH CHECK (skipped on Vercel)
 ===================================================== */
 
 if (!isVercel) {
-
   (async () => {
-
     try {
-
       const { create } = require('ipfs-http-client');
-
-      const client = create({
-        url: process.env.IPFS_URL || 'http://127.0.0.1:5001'
-      });
-
+      const client = create({ url: process.env.IPFS_URL || 'http://127.0.0.1:5001' });
       const version = await client.version();
-
       console.log("✅ IPFS connected:", version.version);
-
     } catch (err) {
-
       console.warn("⚠️ IPFS daemon not reachable");
-
     }
-
   })();
-
 }
 
 /* =====================================================
@@ -121,17 +89,12 @@ const tempStore = new Map();
 const TEMP_TIMEOUT = 300000;
 
 setInterval(() => {
-
   const now = Date.now();
-
   for (const [id, data] of tempStore.entries()) {
-
     if (now - data.createdAt > TEMP_TIMEOUT) {
       tempStore.delete(id);
     }
-
   }
-
 }, 60000);
 
 /* =====================================================
@@ -139,194 +102,134 @@ setInterval(() => {
 ===================================================== */
 
 function computeLeaf(certId, ipfsCID, pdfHashHex, issuerAddress) {
-
   const pdfHashBytes = ethers.utils.arrayify(pdfHashHex);
-
   const encoded = ethers.utils.solidityPack(
     ['string', 'string', 'bytes32', 'address'],
     [certId, ipfsCID, pdfHashBytes, issuerAddress]
   );
-
   return ethers.utils.keccak256(encoded);
 }
 
 /* =====================================================
-   VERIFICATION CORE
+   VERIFICATION CORE (with detailed timing logs)
 ===================================================== */
 
 async function verifyCertificateBuffer(fileBuffer, fileName, certId, universityId) {
+  const startTotal = Date.now();
 
   try {
-
+    console.time(`[${fileName}] Hash computation`);
     const fileHash = cryptoLib.computeHash(fileBuffer);
     const fileHashHex = '0x' + fileHash.toString('hex');
+    console.timeEnd(`[${fileName}] Hash computation`);
 
     if (!db) throw new Error("Database unavailable");
 
     /* ---------- UNIVERSITY LOOKUP ---------- */
-
-    let uniData = null;
-
+    console.time(`[${fileName}] Firestore: find university`);
     const snapshot = await db
       .collection('users')
       .where('registrationId', '==', universityId)
       .limit(1)
       .get();
+    console.timeEnd(`[${fileName}] Firestore: find university`);
 
-    if (snapshot.empty) {
-      throw new Error("University not found");
-    }
-
-    uniData = snapshot.docs[0].data();
-
+    if (snapshot.empty) throw new Error("University not found");
+    const uniData = snapshot.docs[0].data();
     const expectedAddress = uniData.wallet;
 
-    /* ---------- BLOCKCHAIN LOOKUP ---------- */
-
+    /* ---------- INDIVIDUAL CERTIFICATE ---------- */
     let individualCertData = null;
-
+    console.time(`[${fileName}] Blockchain: getCertificate`);
     try {
-
       const certData = await contract.getCertificate(certId);
-
-      if (certData && certData[0] !== '') {
-        individualCertData = certData;
-      }
-
+      if (certData && certData[0] !== '') individualCertData = certData;
     } catch (err) {
-      console.log("Falling back to batch verification");
+      console.log(`[${fileName}] Falling back to batch verification`);
     }
-
-    /* =================================================
-       INDIVIDUAL CERTIFICATE
-    ================================================= */
+    console.timeEnd(`[${fileName}] Blockchain: getCertificate`);
 
     if (individualCertData) {
+      const [ipfsCID, pdfHash, signature, issuer, revoked] = individualCertData;
 
-      const [ipfsCID, pdfHash, signature, issuer, revoked] =
-        individualCertData;
-
-      const hashMatch =
-        fileHashHex.toLowerCase() === pdfHash.toLowerCase();
+      const hashMatch = fileHashHex.toLowerCase() === pdfHash.toLowerCase();
 
       let signatureValid = false;
-
       try {
-
-        const recovered =
-          ethers.utils.verifyMessage(fileHash, signature);
-
-        signatureValid =
-          recovered.toLowerCase() === expectedAddress.toLowerCase();
-
+        const recovered = ethers.utils.verifyMessage(fileHash, signature);
+        signatureValid = recovered.toLowerCase() === expectedAddress.toLowerCase();
       } catch (err) {}
 
-      return {
+      const totalTime = Date.now() - startTotal;
+      console.log(`[${fileName}] ✅ Individual verification completed in ${totalTime}ms`);
 
+      return {
         fileName,
         success: true,
         certId,
         method: "individual",
-
-        verification: {
-          hashMatch,
-          signatureValid
-        },
-
-        onChain: {
-          ipfsCID,
-          issuer,
-          revoked
-        },
-
+        verification: { hashMatch, signatureValid },
+        onChain: { ipfsCID, issuer, revoked },
         university: {
           name: uniData.universityName || uniData.name,
           email: uniData.email,
           address: expectedAddress
         }
       };
-
     }
 
-    /* =================================================
-       BATCH CERTIFICATE
-    ================================================= */
-
+    /* ---------- BATCH CERTIFICATE ---------- */
+    console.time(`[${fileName}] Firestore: find batch certificate`);
     const certSnapshot = await db
       .collection('certificates')
       .where('certId', '==', certId)
+      .where('issuer', '==', expectedAddress)   // 🔥 FIX: added issuer filter
       .limit(1)
       .get();
+    console.timeEnd(`[${fileName}] Firestore: find batch certificate`);
 
-    if (certSnapshot.empty) {
-      throw new Error("Certificate not found");
-    }
-
+    if (certSnapshot.empty) throw new Error("Certificate not found");
     const certData = certSnapshot.docs[0].data();
 
-    const {
-      ipfsCid,
-      pdfHash: storedPdfHash,
-      proof,
-      batchId
-    } = certData;
+    const { ipfsCid, pdfHash: storedPdfHash, proof, batchId } = certData;
 
     if (fileHashHex.toLowerCase() !== storedPdfHash.toLowerCase()) {
       throw new Error("File hash mismatch");
     }
 
-    const leaf = computeLeaf(
-      certId,
-      ipfsCid,
-      storedPdfHash,
-      expectedAddress
-    );
+    console.time(`[${fileName}] Compute leaf`);
+    const leaf = computeLeaf(certId, ipfsCid, storedPdfHash, expectedAddress);
+    console.timeEnd(`[${fileName}] Compute leaf`);
 
-    const batchIdClean =
-      batchId.replace(/-/g, '').padEnd(64, '0');
+    const batchIdClean = batchId.replace(/-/g, '').padEnd(64, '0');
+    const batchIdBytes32 = '0x' + batchIdClean;
 
-    const batchIdBytes32 =
-      '0x' + batchIdClean;
+    console.time(`[${fileName}] Blockchain: verifyCertificateInBatch`);
+    const merkleProofValid = await contract.verifyCertificateInBatch(batchIdBytes32, leaf, proof);
+    console.timeEnd(`[${fileName}] Blockchain: verifyCertificateInBatch`);
 
-    const merkleProofValid =
-      await contract.verifyCertificateInBatch(
-        batchIdBytes32,
-        leaf,
-        proof
-      );
+    if (!merkleProofValid) throw new Error("Merkle proof invalid");
 
-    if (!merkleProofValid) {
-      throw new Error("Merkle proof invalid");
-    }
+    const totalTime = Date.now() - startTotal;
+    console.log(`[${fileName}] ✅ Batch verification completed in ${totalTime}ms`);
 
     return {
-
       fileName,
       success: true,
       certId,
       method: "batch",
-
-      verification: {
-        hashMatch: true,
-        merkleProofValid
-      },
-
+      verification: { hashMatch: true, merkleProofValid },
       university: {
         name: uniData.universityName || uniData.name,
         email: uniData.email,
         address: expectedAddress
       }
-
     };
 
   } catch (error) {
-
-    return {
-      fileName,
-      success: false,
-      error: error.message
-    };
-
+    const totalTime = Date.now() - startTotal;
+    console.error(`[${fileName}] ❌ Verification failed after ${totalTime}ms:`, error.message);
+    return { fileName, success: false, error: error.message };
   }
 }
 
@@ -335,13 +238,9 @@ async function verifyCertificateBuffer(fileBuffer, fileName, certId, universityI
 ===================================================== */
 
 app.post('/api/verify-multiple', async (req, res) => {
-
   try {
-
     if (!req.files || !req.files.certificates) {
-      return res.status(400).json({
-        error: "No certificate uploaded"
-      });
+      return res.status(400).json({ error: "No certificate uploaded" });
     }
 
     const files = Array.isArray(req.files.certificates)
@@ -351,28 +250,13 @@ app.post('/api/verify-multiple', async (req, res) => {
     const { certId, universityId } = req.body;
 
     const results = await Promise.all(
-
-      files.map(file =>
-        verifyCertificateBuffer(
-          file.data,
-          file.name,
-          certId,
-          universityId
-        )
-      )
-
+      files.map(file => verifyCertificateBuffer(file.data, file.name, certId, universityId))
     );
 
     res.json({ results });
-
   } catch (error) {
-
     console.error("Verification error:", error);
-
-    res.status(500).json({
-      error: "Verification failed"
-    });
-
+    res.status(500).json({ error: "Verification failed" });
   }
 });
 
@@ -391,15 +275,12 @@ app.get('/api/test', (req, res) => {
 module.exports = app;
 
 /* =====================================================
-   LOCAL SERVER
+   LOCAL SERVER (only when not on Vercel)
 ===================================================== */
 
 if (!isVercel) {
-
   const PORT = process.env.PORT || 3000;
-
   app.listen(PORT, () => {
     console.log(`✅ Local backend running on port ${PORT}`);
   });
-
 }
