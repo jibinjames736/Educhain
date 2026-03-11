@@ -11,21 +11,21 @@ const cryptoLib = require('./crypto');
 const ipfs = require('./ipfs');
 const contractABI = require('./contractABI.json');
 
-// Firebase Admin – using environment variable for service account
+// Firebase Admin – using environment variable
 let db = null;
 try {
   const admin = require('firebase-admin');
-  // Check if service account is provided as env var (recommended for Vercel)
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
     admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    console.log('✅ Firebase Admin initialized from env var');
   } else {
-    // Fallback to file (for local development)
+    // Fallback to local file for development
     const serviceAccount = require('./serviceAccountKey.json');
     admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    console.log('✅ Firebase Admin initialized from local file');
   }
   db = admin.firestore();
-  console.log('✅ Firebase Admin initialized');
 } catch (err) {
   console.error('❌ Firebase Admin initialization error:', err.message);
   console.warn('⚠️ Firebase Admin not configured – universityId mapping will be unavailable');
@@ -47,12 +47,6 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(fileUpload());
-
-// Global error handler (must be placed after routes, but we'll define early)
-app.use((err, req, res, next) => {
-  console.error('🔥 Unhandled error:', err);
-  res.status(500).json({ error: 'Internal server error', details: err.message });
-});
 
 // Temporary storage for PDFs waiting for signature
 const tempStore = new Map();
@@ -91,15 +85,9 @@ async function verifyCertificateBuffer(fileBuffer, fileName, certId, universityI
       .where('registrationId', '==', universityId)
       .limit(1)
       .get();
-    if (snapshot.empty) {
-      console.error(`[${fileName}] No user found with registrationId = "${universityId}"`);
-      throw new Error(`University ID ${universityId} not found in database`);
-    }
+    if (snapshot.empty) throw new Error(`University ID ${universityId} not found in database`);
     const uniData = snapshot.docs[0].data();
-    console.log(`[${fileName}] Found user:`, { role: uniData.role, wallet: uniData.wallet });
-    if (uniData.role !== 'UNIVERSITY') {
-      throw new Error(`User ${universityId} is not a university`);
-    }
+    if (uniData.role !== 'UNIVERSITY') throw new Error(`User ${universityId} is not a university`);
     const expectedAddress = uniData.wallet;
     if (!expectedAddress) throw new Error(`No Ethereum address associated with university ${universityId}`);
 
@@ -108,9 +96,7 @@ async function verifyCertificateBuffer(fileBuffer, fileName, certId, universityI
     try {
       const certData = await contract.getCertificate(certId);
       if (certData && certData[0] !== '') individualCertData = certData;
-    } catch (err) {
-      // ignore, fallback to batch
-    }
+    } catch (err) { /* ignore, fallback to batch */ }
 
     if (individualCertData) {
       const [ipfsCID, pdfHash, signature, issuer, revoked] = individualCertData;
@@ -184,9 +170,7 @@ app.post('/api/prepare', async (req, res) => {
 app.post('/api/finalize', async (req, res) => {
   try {
     const { tempId, signature, issuer } = req.body;
-    if (!tempId || !signature || !issuer) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
+    if (!tempId || !signature || !issuer) return res.status(400).json({ error: 'Missing required fields' });
     const temp = tempStore.get(tempId);
     if (!temp) return res.status(404).json({ error: 'Temporary data expired' });
     tempStore.delete(tempId);
@@ -217,14 +201,10 @@ app.post('/api/finalize', async (req, res) => {
 
 app.post('/api/verify', async (req, res) => {
   try {
-    if (!req.files || !req.files.certificate) {
-      return res.status(400).json({ error: 'No certificate file uploaded' });
-    }
+    if (!req.files || !req.files.certificate) return res.status(400).json({ error: 'No certificate file uploaded' });
     const file = req.files.certificate;
     const { certId, universityId } = req.body;
-    if (!certId || !universityId) {
-      return res.status(400).json({ error: 'certId and universityId are required' });
-    }
+    if (!certId || !universityId) return res.status(400).json({ error: 'certId and universityId are required' });
     const result = await verifyCertificateBuffer(file.data, file.name, certId, universityId);
     if (!result.success) return res.status(400).json({ error: result.error });
     res.json(result);
@@ -236,14 +216,10 @@ app.post('/api/verify', async (req, res) => {
 
 app.post('/api/verify-multiple', async (req, res) => {
   try {
-    if (!req.files || !req.files.certificates) {
-      return res.status(400).json({ error: 'No certificate files uploaded' });
-    }
+    if (!req.files || !req.files.certificates) return res.status(400).json({ error: 'No certificate files uploaded' });
     const files = Array.isArray(req.files.certificates) ? req.files.certificates : [req.files.certificates];
     const { certId, universityId } = req.body;
-    if (!certId || !universityId) {
-      return res.status(400).json({ error: 'certId and universityId are required' });
-    }
+    if (!certId || !universityId) return res.status(400).json({ error: 'certId and universityId are required' });
     const results = await Promise.all(
       files.map(file => verifyCertificateBuffer(file.data, file.name, certId, universityId))
     );
@@ -287,7 +263,6 @@ app.post('/api/verify-qr', async (req, res) => {
   }
 });
 
-// Test endpoint
 app.get('/api/test', (req, res) => {
   res.json({ message: 'GET test works' });
 });
