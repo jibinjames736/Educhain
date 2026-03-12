@@ -10,7 +10,7 @@ contract CertificateIssuer {
     struct Certificate {
         string ipfsCID;      // IPFS content identifier of the encrypted PDF
         bytes32 pdfHash;     // SHA-256 hash of the raw (unencrypted) PDF
-        bytes signature;    // Institution's RSA signature of the hash
+        bytes signature;    // Institution's  signature of the hash
         address issuer;     // Ethereum address of the issuer (staff)
         bool revoked;       // Revocation status
     }

@@ -59,7 +59,7 @@ setInterval(() => {
   }
 }, 60000);
 
-// ==================== HELPER: Compute Merkle leaf for batch certificate ====================
+//  HELPER: Compute Merkle leaf for batch certificate 
 function computeLeaf(certId, ipfsCID, pdfHashHex, issuerAddress) {
   const pdfHashBytes = ethers.utils.arrayify(pdfHashHex);
   const encoded = ethers.utils.solidityPack(
@@ -69,7 +69,7 @@ function computeLeaf(certId, ipfsCID, pdfHashHex, issuerAddress) {
   return ethers.utils.keccak256(encoded);
 }
 
-// ==================== VERIFICATION CORE with timing logs ====================
+//  VERIFICATION CORE with timing logs 
 async function verifyCertificateBuffer(fileBuffer, fileName, certId, universityId) {
   const startTime = Date.now();
   try {
@@ -175,7 +175,7 @@ async function verifyCertificateBuffer(fileBuffer, fileName, certId, universityI
   }
 }
 
-// ==================== ROUTES ====================
+//  ROUTES 
 
 app.post('/api/prepare', async (req, res) => {
   try {
@@ -292,7 +292,7 @@ app.get('/api/test', (req, res) => {
   res.json({ message: 'GET test works' });
 });
 
-// ========== VERCEL EXPORT ==========
+//  VERCEL EXPORT 
 module.exports = app;
 
 // Local development server
