@@ -26,11 +26,11 @@ function encryptPDF(pdfBuffer) {
 /**
  * Recovers the signer's Ethereum address from a raw hash and signature.
  * @param {Buffer} pdfHashRaw - The raw 32‑byte hash that was signed
- * @param {string} signatureHex - Hex signature (with 0x prefix)
- * @returns {string} Ethereum address (checksummed)
+ * @param {string} signatureHex - Hex signature 
+ * @returns {string} Ethereum address 
  */
 function recoverSigner(pdfHashRaw, signatureHex) {
-  // Pass the raw buffer directly – ethers v5 will treat it as the original message.
+  
   return ethers.utils.verifyMessage(pdfHashRaw, signatureHex);
 }
 
