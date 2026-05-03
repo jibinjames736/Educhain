@@ -3,7 +3,7 @@ import "../../styles/IssueCertificate.css";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { QRCodeCanvas } from "qrcode.react";
-import { BrowserProvider, Contract, getBytes, parseUnits } from "ethers"; // ethers v6
+import { BrowserProvider, Contract, getBytes, parseUnits } from "ethers";
 import contractABI from "/src/contractABI.json";
 import { db } from "../../firebase";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
@@ -22,28 +22,59 @@ const IssueCertificate = ({ university }) => {
   const [verificationUrl, setVerificationUrl] = useState(null);
   const [aesKey, setAesKey] = useState(null);
   const [ipfsCid, setIpfsCid] = useState(null);
+  const [issueDate, setIssueDate] = useState("");
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  // Generate PDF as base64 string
+  // Generate PDF as base64 string - dynamic page height
   const generatePDFBase64 = async () => {
     const element = document.getElementById("certificate");
     await new Promise(resolve => setTimeout(resolve, 300));
     const canvas = await html2canvas(element, { scale: 2, useCORS: true });
     const imgData = canvas.toDataURL("image/jpeg", 0.8);
-    const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: "a4" });
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-    pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
+
+    const pdfWidthMM = 297; // A4 landscape width
+    const canvasAspect = canvas.height / canvas.width;
+    const pdfHeightMM = pdfWidthMM * canvasAspect;
+
+    const pdf = new jsPDF({
+      unit: "mm",
+      format: [pdfWidthMM, pdfHeightMM],
+      orientation: pdfHeightMM > pdfWidthMM ? "portrait" : "landscape"
+    });
+
+    pdf.addImage(imgData, "JPEG", 0, 0, pdfWidthMM, pdfHeightMM);
     const pdfBlob = pdf.output("blob");
+
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result.split(",")[1]); // base64 without header
+      reader.onloadend = () => resolve(reader.result.split(",")[1]);
       reader.onerror = reject;
       reader.readAsDataURL(pdfBlob);
     });
+  };
+
+  // Preview PDF download - dynamic page height
+  const generatePDF = async () => {
+    const element = document.getElementById("certificate");
+    await new Promise(resolve => setTimeout(resolve, 300));
+    const canvas = await html2canvas(element, { scale: 2, useCORS: true });
+    const imgData = canvas.toDataURL("image/jpeg", 0.8);
+
+    const pdfWidthMM = 297;
+    const canvasAspect = canvas.height / canvas.width;
+    const pdfHeightMM = pdfWidthMM * canvasAspect;
+
+    const pdf = new jsPDF({
+      unit: "mm",
+      format: [pdfWidthMM, pdfHeightMM],
+      orientation: pdfHeightMM > pdfWidthMM ? "portrait" : "landscape"
+    });
+
+    pdf.addImage(imgData, "JPEG", 0, 0, pdfWidthMM, pdfHeightMM);
+    pdf.save(`${form.certId || "certificate"}.pdf`);
   };
 
   // ========== MAIN ISSUE FUNCTION ==========
@@ -61,13 +92,13 @@ const IssueCertificate = ({ university }) => {
     setIpfsCid(null);
 
     try {
-      const backendUrl = import.meta.env.VITE_BACKEND_URL;
+      const backendUrl = "http://localhost:3000";
       const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS;
 
       // ---- STEP 1: Generate PDF ----
       const pdfBase64 = await generatePDFBase64();
 
-      // ---- STEP 2: Prepare (send PDF to backend) ----
+      // ---- STEP 2: Prepare ----
       const prepareRes = await fetch(`${backendUrl}/api/prepare`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -120,7 +151,7 @@ const IssueCertificate = ({ university }) => {
       const signature = await signer.signMessage(getBytes(pdfHash));
       console.log("Hash signed by", issuer);
 
-      // ---- STEP 4: Finalize (backend encrypts & uploads to IPFS) ----
+      // ---- STEP 4: Finalize ----
       const finalizeRes = await fetch(`${backendUrl}/api/finalize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -138,10 +169,9 @@ const IssueCertificate = ({ university }) => {
       }
 
       const finalData = await finalizeRes.json();
-
       setIpfsCid(finalData.cid);
 
-      // ---- STEP 5: Download encrypted PDF (optional) ----
+      // ---- STEP 5: Download encrypted PDF ----
       const pdfBytes = Uint8Array.from(atob(finalData.encryptedPdfBase64), c => c.charCodeAt(0));
       const blob = new Blob([pdfBytes], { type: "application/pdf" });
       const url = window.URL.createObjectURL(blob);
@@ -151,7 +181,7 @@ const IssueCertificate = ({ university }) => {
       link.click();
       window.URL.revokeObjectURL(url);
 
-      // ---- STEP 6: Submit to blockchain (4 arguments + gas options) ----
+      // ---- STEP 6: Submit to blockchain ----
       const contract = new Contract(contractAddress, contractABI, signer);
       let tx;
       let receipt;
@@ -163,7 +193,6 @@ const IssueCertificate = ({ university }) => {
           const feeData = await provider.getFeeData();
           let gasOptions = {};
 
-          // Check if the network supports EIP-1559
           if (feeData.maxFeePerGas) {
             let maxFeePerGas = feeData.maxFeePerGas;
             let maxPriorityFeePerGas = feeData.maxPriorityFeePerGas;
@@ -180,10 +209,8 @@ const IssueCertificate = ({ university }) => {
 
             gasOptions = { maxFeePerGas, maxPriorityFeePerGas };
           } else {
-            // Legacy network: use gasPrice
             let gasPrice = feeData.gasPrice;
             if (!gasPrice) gasPrice = parseUnits('20', 'gwei');
-            // Increase by 20% per retry
             const multiplier = 120n + BigInt(retries) * 20n;
             gasPrice = (gasPrice * multiplier) / 100n;
             gasOptions = { gasPrice };
@@ -191,7 +218,6 @@ const IssueCertificate = ({ university }) => {
 
           console.log(`Attempt ${retries + 1}: using gas options`, gasOptions);
 
-          // Optional static call to catch revert reasons
           await contract.issueCertificate.staticCall(
             finalData.certId,
             finalData.cid,
@@ -199,7 +225,6 @@ const IssueCertificate = ({ university }) => {
             finalData.signature
           );
 
-          // Actual transaction
           tx = await contract.issueCertificate(
             finalData.certId,
             finalData.cid,
@@ -243,6 +268,7 @@ const IssueCertificate = ({ university }) => {
       setTxHash(receipt.hash);
       setVerificationUrl(finalData.verificationUrl);
       setAesKey(finalData.aesKeyWithIv);
+      setIssueDate(new Date().toLocaleDateString());
       alert("✅ Certificate issued, stored in Firestore, and recorded on blockchain!");
     } catch (error) {
       console.error(error);
@@ -252,20 +278,6 @@ const IssueCertificate = ({ university }) => {
     }
   };
 
-  // Preview PDF download
-  const generatePDF = async () => {
-    const element = document.getElementById("certificate");
-    await new Promise(resolve => setTimeout(resolve, 300));
-    const canvas = await html2canvas(element, { scale: 2, useCORS: true });
-    const imgData = canvas.toDataURL("image/jpeg", 0.8);
-    const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: "a4" });
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-    pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
-    pdf.save(`${form.certId || "certificate"}.pdf`);
-  };
-
-  // Use environment variable for base URL, fallback to actual Vercel app
   const baseUrl = import.meta.env.VITE_APP_URL || 'https://educhain-rust.vercel.app';
   const verificationURL = form.certId
     ? `${baseUrl}/verify/${form.certId}`
@@ -338,7 +350,7 @@ const IssueCertificate = ({ university }) => {
             <div className="cert-bottom">
               <div className="cert-meta">
                 <p>Date Issued</p>
-                <strong>{issued ? new Date().toLocaleDateString() : "--"}</strong>
+                <strong>{issueDate || "--"}</strong>
               </div>
               <div className="cert-meta">
                 <p>Certificate ID</p>

@@ -50,8 +50,18 @@ export default function VerifyPage() {
     formData.append("universityId", universityId);
 
     // Use environment variable or fallback to relative URL (for combined deployment)
-    const baseUrl = import.meta.env.VITE_BACKEND_URL || "";
-    const url = baseUrl ? `${baseUrl}/api/verify-multiple` : "/api/verify-multiple";
+  
+
+const envUrl = import.meta.env.VITE_BACKEND_URL;
+
+const baseUrl =
+  envUrl && envUrl.trim().length > 0
+    ? envUrl.trim()
+    : "http://localhost:3000"; // local backend fallback
+
+const url = new URL("/api/verify-multiple", baseUrl).toString();
+
+
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 sec timeout

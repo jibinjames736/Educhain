@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CertificateIssuer – Auto Sync with MetaMask</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        #status { margin-top: 20px; white-space: pre-wrap; }
+        .connected { color: green; }
+        .disconnected { color: red; }
+    </style>
+</head>
+<body>
+    <h1>CertificateIssuer – Firebase to Blockchain Auto‑Sync</h1>
+    <p><strong>Status:</strong> <span id="connectionStatus">Not connected</span></p>
+    <p><strong>Maintainer Address:</strong> <span id="maintainerAddr"></span></p>
+    <p><strong>Listening to Firebase collection:</strong> <code>verifiedInstitutions</code></p>
+    <div id="status"></div>
+
+    <script>
+        // --- Firebase configuration (REPLACE WITH YOUR OWN) ---
+        const firebaseConfig = {
+  apiKey: "AIzaSyDzc4rzr1vYjURProQv7Q1sWWnWOQgNipA",
+  authDomain: "cert-verify-b1961.firebaseapp.com",
+  projectId: "cert-verify-b1961",
+  storageBucket: "cert-verify-b1961.firebasestorage.app",
+  messagingSenderId: "494698941714",
+  appId: "1:494698941714:web:808a93c8e25fb0ed75b7cb",
+  measurementId: "G-Q45GY8LTLQ"
+};
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const institutionsRef = db.collection('verifiedInstitutions'); 
+
+        // --- Contract details (REPLACE WITH YOUR DEPLOYED VALUES) ---
+        const contractAddress = "";
+        // Minimal ABI for add/remove and view functions
+        const contractABI = [
+            "function addInstitution(address _institution) external",
+            "function removeInstitution(address _institution) external",
+            "function verifiedInstitutions(address) view returns (bool)",
+            "function listMaintainer() view returns (address)"
+        ];
+
+        let provider, signer, contract;
+        let maintainerAddress = null;
+        let listenerActive = false;
+
+        const statusDiv = document.getElementById('status');
+        const connectionSpan = document.getElementById('connectionStatus');
+        const maintainerSpan = document.getElementById('maintainerAddr');
+
+        // --- Log messages to the page ---
+        function log(msg, isError = false) {
+            const p = document.createElement('div');
+            p.style.color = isError ? 'red' : 'black';
+            p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            statusDiv.appendChild(p);
+            statusDiv.scrollTop = statusDiv.scrollHeight;
+        }
+
+        // --- Connect to MetaMask and start listening ---
+        async function connectAndListen() {
+            if (typeof window.ethereum === 'undefined') {
+                log('❌ MetaMask not installed!', true);
+                return;
+            }
+
+            try {
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                await provider.send("eth_requestAccounts", []);
+                signer = provider.getSigner();
+                const address = await signer.getAddress();
+                connectionSpan.innerHTML = `✅ Connected (${address})`;
+                connectionSpan.className = 'connected';
+                maintainerSpan.textContent = address;
+
+                contract = new ethers.Contract(contractAddress, contractABI, signer);
+
+                // Verify that the connected account is the listMaintainer
+                const maintainer = await contract.listMaintainer();
+                if (address.toLowerCase() !== maintainer.toLowerCase()) {
+                    log('⚠️ WARNING: Connected account is NOT the list maintainer. Transactions will fail.', true);
+                } else {
+                    maintainerAddress = address;
+                    log('✅ Connected as list maintainer. Listening for Firebase changes...');
+                    startFirebaseListener();
+                }
+            } catch (err) {
+                log(`❌ Connection error: ${err.message}`, true);
+            }
+        }
+
+        // --- Start listening to Firestore changes ---
+        function startFirebaseListener() {
+            if (listenerActive) return;
+            listenerActive = true;
+
+            institutionsRef.onSnapshot(async (snapshot) => {
+                for (const change of snapshot.docChanges()) {
+                    const doc = change.doc;
+                    const walletAddress = doc.id; // using document ID as wallet address
+                    // If wallet address is stored in a field instead, use: doc.data().walletAddress
+
+                    if (!ethers.utils.isAddress(walletAddress)) {
+                        log(`⚠️ Skipping invalid address in document ${doc.id}: ${walletAddress}`, true);
+                        continue;
+                    }
+
+                    if (change.type === 'added') {
+                        log(`➕ Firebase addition detected: ${walletAddress}`);
+                        await sendTransaction('add', walletAddress);
+                    } else if (change.type === 'removed') {
+                        log(`➖ Firebase removal detected: ${walletAddress}`);
+                        await sendTransaction('remove', walletAddress);
+                    }
+                    // 'modified' changes are ignored (you can handle if needed)
+                }
+            }, (error) => {
+                log(`❌ Firestore listener error: ${error.message}`, true);
+                listenerActive = false;
+            });
+        }
+
+        // --- Send transaction (triggers MetaMask popup) ---
+        async function sendTransaction(type, walletAddress) {
+            if (!maintainerAddress) {
+                log('⚠️ Not connected as maintainer, skipping transaction.', true);
+                return;
+            }
+
+            try {
+                let tx;
+                if (type === 'add') {
+                    tx = await contract.addInstitution(walletAddress);
+                } else {
+                    tx = await contract.removeInstitution(walletAddress);
+                }
+                log(`⏳ Transaction sent: ${tx.hash} (waiting for confirmation...)`);
+                await tx.wait();
+                log(`✅ ${type === 'add' ? 'Added' : 'Removed'} ${walletAddress} on‑chain.`);
+            } catch (err) {
+                // User may reject the transaction in MetaMask
+                log(`❌ Failed to ${type} ${walletAddress}: ${err.message}`, true);
+            }
+        }
+
+        // --- Automatically connect when page loads ---
+        window.addEventListener('load', () => {
+            connectAndListen();
+        });
+
+        // Optional: reconnect if MetaMask account changes
+        if (window.ethereum) {
+            window.ethereum.on('accountsChanged', (accounts) => {
+                log('🔄 MetaMask account changed. Reconnecting...');
+                listenerActive = false;
+                connectAndListen();
+            });
+        }
+    </script>
+</body>
+</html>

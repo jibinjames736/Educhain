@@ -87,7 +87,7 @@ const BatchIssuance = ({ university }) => {
 
     setAdding(true);
     try {
-      const backendUrl = import.meta.env.VITE_BACKEND_URL;
+      const backendUrl = "http://localhost:3000";
 
       const pdfBase64 = await generatePDFBase64();
 
